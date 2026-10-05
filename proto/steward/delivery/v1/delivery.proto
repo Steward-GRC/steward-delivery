@@ -1,0 +1,113 @@
+// Copyright 2026 The Steward Authors
+// SPDX-License-Identifier: Apache-2.0
+
+syntax = "proto3";
+
+package steward.delivery.v1;
+
+import "google/protobuf/timestamp.proto";
+
+option go_package = "github.com/Steward-GRC/steward-delivery/gen/go/steward/delivery/v1;deliveryv1";
+
+// DeliveryService renders policy versions, diffs them, issues magic links
+// (read-only share links) and takes PDF export requests. The caller (the
+// gateway) has already authenticated the user and checked access; the user
+// ids in the requests are the ones it resolved.
+service DeliveryService {
+  // GetRenderedContent returns the HTML for one policy version.
+  rpc GetRenderedContent(GetRenderedContentRequest) returns (GetRenderedContentResponse);
+  // GetDiff returns the section diff between two versions of a policy.
+  rpc GetDiff(GetDiffRequest) returns (GetDiffResponse);
+  // RequestPDFExport starts a PDF render of one version and returns its job
+  // id at once; the caller polls GetPDFDownloadLink.
+  rpc RequestPDFExport(RequestPDFExportRequest) returns (RequestPDFExportResponse);
+  // GetPDFDownloadLink returns a short-lived download URL once the job's PDF
+  // is ready.
+  rpc GetPDFDownloadLink(GetPDFDownloadLinkRequest) returns (GetPDFDownloadLinkResponse);
+  // CreateMagicLink issues a magic link to one version.
+  rpc CreateMagicLink(CreateMagicLinkRequest) returns (CreateMagicLinkResponse);
+  // RevokeMagicLink ends a magic link at once. Revoking twice succeeds.
+  rpc RevokeMagicLink(RevokeMagicLinkRequest) returns (RevokeMagicLinkResponse);
+  // ResolveMagicLink checks a magic link and returns the version it opens.
+  rpc ResolveMagicLink(ResolveMagicLinkRequest) returns (ResolveMagicLinkResponse);
+}
+
+message GetRenderedContentRequest {
+  string policy_version_id = 1;
+}
+
+message GetRenderedContentResponse {
+  string html = 1;
+}
+
+message GetDiffRequest {
+  string policy_version_id_from = 1;
+  string policy_version_id_to = 2;
+}
+
+message GetDiffResponse {
+  repeated SectionDiff sections = 1;
+}
+
+// SectionDiff is one section's change between two versions.
+message SectionDiff {
+  string section_key = 1;
+  // "added", "removed", "changed" or "unchanged".
+  string change_type = 2;
+  // Inline word diff; empty when unchanged.
+  string diff_html = 3;
+  // True when the change came from a template migration.
+  bool boilerplate = 4;
+}
+
+message RequestPDFExportRequest {
+  string policy_version_id = 1;
+  string requester_user_id = 2;
+}
+
+message RequestPDFExportResponse {
+  string job_id = 1;
+}
+
+message GetPDFDownloadLinkRequest {
+  string job_id = 1;
+}
+
+message GetPDFDownloadLinkResponse {
+  string signed_url = 1;
+  google.protobuf.Timestamp expires_at = 2;
+}
+
+message CreateMagicLinkRequest {
+  string policy_version_id = 1;
+  string created_by_user_id = 2;
+  // A sensitive link expires sooner, always shows the watermark and asks the
+  // viewer for an email address before it opens.
+  bool sensitive = 3;
+}
+
+message CreateMagicLinkResponse {
+  string token = 1;
+  google.protobuf.Timestamp expires_at = 2;
+}
+
+message RevokeMagicLinkRequest {
+  string token = 1;
+  string revoked_by_user_id = 2;
+}
+
+message RevokeMagicLinkResponse {
+  bool revoked = 1;
+}
+
+message ResolveMagicLinkRequest {
+  string token = 1;
+  // Required for a sensitive link; recorded in the access event.
+  string viewer_email = 2;
+}
+
+message ResolveMagicLinkResponse {
+  string policy_version_id = 1;
+  bool sensitive = 2;
+  bool watermark_required = 3;
+}
