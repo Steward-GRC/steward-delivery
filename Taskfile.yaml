@@ -23,32 +23,20 @@ tasks:
     desc: Run tests
     cmds:
       - go test -parallel {{.TESTPARALLELISM}} ./...
-  test-cover:
-    desc: Run tests with coverage reporting
+  test-race:
+    desc: Run tests with the race detector
     cmds:
-      - go test ./... -cover
-  lint:
-    desc: Run all linters
-    deps: [test]
+      - go test -race -count=1 ./...
+  proto:
+    desc: Fetch the pinned callee protos, lint, and regenerate gen/
     cmds:
-      - |
-        unformatted="$(gofmt -l .)"
-        if [ -n "$unformatted" ]; then echo "gofmt needed on:"; echo "$unformatted"; exit 1; fi
-      - golangci-lint run
-      - yamllint .
-  lint-init:
-    desc: Install lint dependencies (golangci-lint is built with the local Go toolchain)
+      - scripts/proto-generate.sh
+      - buf lint
+  proto-breaking:
+    desc: Check proto/ for breaking changes against main
     cmds:
-      - brew install gitleaks yamllint
-      - go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@{{.GOLANGCI_VERSION}}
-      - go install golang.org/x/tools/cmd/goimports@latest
-  license:
-    desc: Verify every source file carries the Apache-2.0 license header (CI; never writes).
+      - buf breaking proto --against '.git#branch=main,subdir=proto'
+  docs:
+    desc: Regenerate docs/error-codes.md from the error registry
     cmds:
-      - go install github.com/Bugs5382/golic/cmd/golic@{{.GOLIC_VERSION}}
-      - golic inject -t {{.TEMPLATE_LIC}} -c "{{.COMMON_LIC}}" --dry -x
-  license:fix:
-    desc: Inject the Apache-2.0 header into any source file missing it.
-    cmds:
-      - go install github.com/Bugs5382/golic/cmd/golic@{{.GOLIC_VERSION}}
-      - golic inject -t {{.TEMPLATE_LIC}} -c "{{.COMMON_LIC}}"
+      - UPDATE_DOCS=1 go test ./internal/errcodes -run TestErrorCodesDocIsCurrent

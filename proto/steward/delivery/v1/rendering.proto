@@ -1,0 +1,31 @@
+// Copyright 2026 The Steward Authors
+// SPDX-License-Identifier: Apache-2.0
+
+syntax = "proto3";
+
+package steward.delivery.v1;
+
+option go_package = "github.com/Steward-GRC/steward-delivery/gen/go/steward/delivery/v1;deliveryv1";
+
+// RenderingContract maps each editor node type to the markup every renderer
+// (this service, the web app, the native apps) must produce for it. The
+// golden-file suite in this repo enforces it.
+message RenderingContract {
+  repeated NodeSpec nodes = 1;
+}
+
+message NodeSpec {
+  // "SectionNode", "BoilerplateNode", "EditableRegionNode", "paragraph" and so on.
+  string node_type = 1;
+  VisualSpec visual = 2;
+}
+
+message VisualSpec {
+  // The element, such as "section", "div" or "p".
+  string html_element = 1;
+  repeated string css_classes = 2;
+  // True for content a reader can't edit, such as boilerplate.
+  bool read_only = 3;
+  // An ARIA role hint.
+  string role = 4;
+}
