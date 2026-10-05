@@ -19,6 +19,8 @@ result is reused for 5 seconds.
 | `rabbitmq` | yes | Not ready: magic links can't be audited. |
 | `core` | yes | Not ready: nothing can be rendered or diffed. Checked through core's own health answer, which also gives its version. |
 | `objectstore` | no, reported when `S3_ENDPOINT` is set | Degraded, still ready: only PDF downloads fail. |
+| `jwks` | yes, while service-to-service authentication is on | Not ready: no caller can be verified. A good fetch keeps it up for a minute; a failure is retried on the next probe. The verifier keeps its last good key set either way. |
+| `workloadauth` | no, reported only with `WORKLOAD_AUTH=disabled` | Always degraded: every caller that reaches the port is served. Never run like this outside local development. |
 | `kubernetes` | no, reported while PDF export is on | Degraded, still ready: only new exports fail. Fails too when the CRD is missing or the service account can't list `pdfrenders`. |
 
 - **HTTP on `PROBE_PORT` (8080):** `GET /livez` is 200 while the process is up and never checks a
@@ -40,6 +42,14 @@ result is reused for 5 seconds.
 | `PDF_EXPORT_DISABLED` | `PDF_EXPORT_ENABLED`, the in-cluster config, and `S3_ENDPOINT` for downloads. |
 | Exports stay `PDF_EXPORT_NOT_READY` | The renderer isn't reconciling: `kubectl get pdfrenders`, the renderer's logs, and whether it can reach `INTERNAL_BASE_URL`. |
 | `PDF_EXPORT_FAILED` | `pdf_jobs.error_msg` for the job, or the resource's `status.error`. |
+| Delivery won't start: `WORKLOAD_TOKEN_FILE` | The projected token isn't mounted, or `WORKLOAD_TOKEN_FILE` points elsewhere. |
+| Calls to core fail with `read WORKLOAD_TOKEN_FILE` | The token mount went away; delivery won't call core without it. |
+| Core refuses delivery: `Unauthenticated` or `PermissionDenied` | core's `WORKLOAD_ALLOWED_SERVICEACCOUNTS` must list `steward/steward-delivery`, and the token's audience must be `steward`. |
+| `Unauthenticated: workload token rejected` on delivery's API | The log line `caller token rejected` gives the reason: wrong `iss` or `aud`, expired, or a service account missing from `WORKLOAD_ALLOWED_SERVICEACCOUNTS`. |
+| `PermissionDenied: caller not allowed on this method` | Only the gateway may call delivery's API; the `rpc.denied` audit event names the caller. |
+| `Unavailable: workload verifier unavailable` | No JWKS has loaded since start: `steward-depstate-jwks`, then the `JWKS refresh failed` log line. |
+| The renderer's HTML fetch gets 401 or 403 | 401: the renderer Job sent no token or a rejected one (its `WORKLOAD_TOKEN_FILE` mount, audience `steward`, and `steward/steward-pdf-renderer` in `WORKLOAD_ALLOWED_SERVICEACCOUNTS`). 403: the token belongs to another caller. |
+| The "Workload auth copy" check fails | `internal/workloadauth` was edited here or `STEWARD_CORE_REF` moved: copy the package again from steward-core at the pin. |
 | No events reach audit | `steward-depstate-rabbitmq` or `/readyz`, then the `audit` exchange and its binding to audit's queue. |
 
 ## Backups

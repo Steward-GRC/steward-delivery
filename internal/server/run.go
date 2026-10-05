@@ -28,6 +28,8 @@ import (
 	healthpb "google.golang.org/grpc/health/grpc_health_v1"
 	"google.golang.org/grpc/reflection"
 	"google.golang.org/grpc/status"
+
+	"github.com/Steward-GRC/steward-delivery/internal/workloadauth"
 )
 
 // gracefulStopTimeout bounds the drain of in-flight RPCs on shutdown, so a
@@ -46,10 +48,27 @@ const (
 	LivenessService  = "liveness"
 )
 
-// Options are the transport and probe settings. Zero serves plain gRPC and is
-// always ready.
+// reflectionServices stay open with health, so grpcurl and probes need no
+// token.
+var reflectionServices = []string{"/grpc.reflection.v1.ServerReflection/", "/grpc.reflection.v1alpha.ServerReflection/"}
+
+// Auth authenticates callers by their workload token (see
+// internal/workloadauth).
+type Auth struct {
+	Verifier workloadauth.TokenVerifier
+	// Policy is the per-method caller allow-list.
+	Policy workloadauth.Policy
+	// Options tune the interceptors, typically a deny hook that audits.
+	Options []workloadauth.Option
+}
+
+// Options are the transport and probe settings. Zero serves plain gRPC with
+// no caller authentication (WORKLOAD_AUTH=disabled) and is always ready.
 type Options struct {
 	CertFile, KeyFile, ClientCAFile string
+	// Auth authenticates every call except health and reflection. Nil only
+	// when WORKLOAD_AUTH=disabled.
+	Auth *Auth
 	// Checker holds the dependencies readiness follows.
 	Checker *health.Checker
 	// CheckInterval is how often Health/Watch subscribers are brought up to
@@ -58,7 +77,9 @@ type Options struct {
 }
 
 // Serve runs a gRPC server on lis with go-otel tracing, panic recovery,
-// grpc.health.v1 and reflection, plus the services register adds. It returns nil once ctx is cancelled and the server has stopped.
+// workload authentication, grpc.health.v1 and reflection, plus the services
+// register adds. It returns nil once ctx is cancelled and the server has
+// stopped.
 func Serve(ctx context.Context, lis net.Listener, lg log.Logger, opts Options, register func(*grpc.Server)) error {
 	checker := opts.Checker
 	if checker == nil {
@@ -76,10 +97,17 @@ func Serve(ctx context.Context, lis net.Listener, lg log.Logger, opts Options, r
 	if err != nil {
 		return fmt.Errorf("server: health: %w", err)
 	}
+	unary := []grpc.UnaryServerInterceptor{bi.UnaryServerInterceptor(), recoverUnary(lg)}
+	stream := []grpc.StreamServerInterceptor{bi.StreamServerInterceptor(), recoverStream(lg)}
+	if a := opts.Auth; a != nil {
+		waOpts := append([]workloadauth.Option{workloadauth.WithExempt(reflectionServices...)}, a.Options...)
+		unary = append(unary, workloadauth.UnaryServerInterceptor(a.Verifier, a.Policy, lg, waOpts...))
+		stream = append(stream, workloadauth.StreamServerInterceptor(a.Verifier, a.Policy, lg, waOpts...))
+	}
 	serverOpts := []grpc.ServerOption{
 		grpc.StatsHandler(gootel.GRPCServerStatsHandler()),
-		grpc.ChainUnaryInterceptor(bi.UnaryServerInterceptor(), recoverUnary(lg)),
-		grpc.ChainStreamInterceptor(bi.StreamServerInterceptor(), recoverStream(lg)),
+		grpc.ChainUnaryInterceptor(unary...),
+		grpc.ChainStreamInterceptor(stream...),
 	}
 	if opts.CertFile != "" {
 		creds, err := mtls(opts)
@@ -116,6 +144,24 @@ func Serve(ctx context.Context, lis net.Listener, lg log.Logger, opts Options, r
 		<-errCh
 		return nil
 	}
+}
+
+// ClientAuth returns the dial options that send delivery's workload token on
+// every call, re-reading tokenFile each time so a rotated token is picked up.
+// A file that can't be read now is an error, so a missing mount stops the
+// boot; one that disappears later fails each call. An empty tokenFile sends
+// no token, which config allows only with WORKLOAD_AUTH=disabled.
+func ClientAuth(tokenFile string) ([]grpc.DialOption, error) {
+	opt, ok, err := workloadauth.DialOptionFromEnv(func(k string) string {
+		if k == workloadauth.EnvTokenFile {
+			return tokenFile
+		}
+		return ""
+	})
+	if err != nil || !ok {
+		return nil, err
+	}
+	return []grpc.DialOption{opt}, nil
 }
 
 // ServeProbes serves /livez and /readyz over plain HTTP on lis, for probes

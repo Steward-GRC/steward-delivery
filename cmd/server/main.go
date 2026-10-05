@@ -16,6 +16,7 @@ import (
 	"net"
 	"net/http"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
@@ -46,9 +47,14 @@ import (
 	"github.com/Steward-GRC/steward-delivery/internal/readiness"
 	"github.com/Steward-GRC/steward-delivery/internal/server"
 	"github.com/Steward-GRC/steward-delivery/internal/store"
+	"github.com/Steward-GRC/steward-delivery/internal/workloadauth"
 )
 
 const serviceName = "delivery"
+
+// jwksRecheck is how long a good JWKS fetch keeps readiness up before the
+// next probe fetches again.
+const jwksRecheck = time.Minute
 
 func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
@@ -88,10 +94,19 @@ func run(ctx context.Context, logger log.Logger) error {
 	}
 	defer db.Close()
 
-	// Plain gRPC to core until service mTLS identities are defined.
-	coreConn, err := grpc.NewClient(cfg.CoreGRPCAddr,
+	// Plaintext inside the cluster; delivery's workload token on every call
+	// tells core who is calling.
+	coreAuth, err := server.ClientAuth(cfg.WorkloadTokenFile)
+	if err != nil {
+		return fmt.Errorf("core client: %w", err)
+	}
+	if len(coreAuth) == 0 {
+		logger.Warn("WORKLOAD_TOKEN_FILE is not set: calls to core carry no workload token (WORKLOAD_AUTH=disabled)")
+	}
+	coreConn, err := grpc.NewClient(cfg.CoreGRPCAddr, append([]grpc.DialOption{
 		grpc.WithTransportCredentials(insecure.NewCredentials()),
-		grpc.WithStatsHandler(gootel.GRPCClientStatsHandler()))
+		grpc.WithStatsHandler(gootel.GRPCClientStatsHandler()),
+	}, coreAuth...)...)
 	if err != nil {
 		return fmt.Errorf("core client: %w", err)
 	}
@@ -99,7 +114,7 @@ func run(ctx context.Context, logger log.Logger) error {
 	policyService := corev1.NewPolicyServiceClient(coreConn)
 	policyClient := corepolicy.New(policyService)
 	appendixClient := corepolicy.NewAppendixClient(corev1.NewAppendixServiceClient(coreConn))
-	logger.Info("core client ready", log.F("addr", cfg.CoreGRPCAddr))
+	logger.Info("core client ready", log.F("addr", cfg.CoreGRPCAddr), log.F("workload_token", len(coreAuth) > 0))
 
 	conn, err := rabbitmq.Connect(ctx, cfg.RabbitURL, append(rmqotel.Instrument(), rabbitmq.WithLogger(rabbitLogger{logger}))...)
 	if err != nil {
@@ -165,6 +180,29 @@ func run(ctx context.Context, logger log.Logger) error {
 		WithSensitivity(corepolicy.NewSensitivity(policyService)).
 		WithPDFLinkTTL(cfg.PDFLinkTTL)
 
+	var auth *server.Auth
+	guardInternal := func(h http.Handler) http.Handler { return h }
+	if cfg.WorkloadAuthEnabled {
+		v, err := workloadauth.NewVerifier(cfg.WorkloadAuth, logger)
+		if err != nil {
+			return fmt.Errorf("workload auth: %w", err)
+		}
+		go v.Run(ctx)
+		deps.JWKS = readiness.RecheckEvery(v.Refresh, jwksRecheck, time.Now)
+		auth = &server.Auth{Verifier: v, Policy: grpcsvc.CallerPolicy(), Options: []workloadauth.Option{
+			workloadauth.WithDenyHook(grpcsvc.AuditDenial(auditor, logger)),
+		}}
+		guardInternal = server.HTTPAuth(v, grpcsvc.InternalHTTPCallers, logger, grpcsvc.AuditDenial(auditor, logger))
+		logger.Info("service-to-service authentication on",
+			log.F("issuer", cfg.WorkloadAuth.Issuer), log.F("audience", cfg.WorkloadAuth.Audience),
+			log.F("jwks_override", cfg.WorkloadAuth.JWKSURL != ""), log.F("ca_file", cfg.WorkloadAuth.CAFile != ""),
+			log.F("bearer_file", cfg.WorkloadAuth.BearerFile != ""),
+			log.F("allowed_serviceaccounts", strings.Join(cfg.WorkloadAuth.AllowedServiceAccounts, ",")))
+	} else {
+		deps.WorkloadAuthDisabled = true
+		go workloadauth.WarnDisabled(ctx, logger, workloadauth.DisabledWarnInterval)
+	}
+
 	checker, err := readiness.New(deps, health.WithTTL(5*time.Second), health.WithTimeout(2*time.Second), health.WithLogger(logger))
 	if err != nil {
 		return fmt.Errorf("readiness: %w", err)
@@ -194,10 +232,10 @@ func run(ctx context.Context, logger log.Logger) error {
 	}()
 	internalDone := make(chan error, 1)
 	go func() {
-		internalDone <- serveInternal(ctx, internalLis, policyhttp.NewWithAppendix(policyClient, appendixClient, nil).WithLogger(logger))
+		internalDone <- serveInternal(ctx, internalLis, policyhttp.NewWithAppendix(policyClient, appendixClient, nil).WithLogger(logger), guardInternal)
 		cancel()
 	}()
-	opts := server.Options{CertFile: cfg.TLSCertFile, KeyFile: cfg.TLSKeyFile, ClientCAFile: cfg.TLSClientCAFile, Checker: checker}
+	opts := server.Options{CertFile: cfg.TLSCertFile, KeyFile: cfg.TLSKeyFile, ClientCAFile: cfg.TLSClientCAFile, Auth: auth, Checker: checker}
 	err = server.Serve(ctx, lis, logger, opts, func(s *grpc.Server) {
 		deliveryv1.RegisterDeliveryServiceServer(s, handler)
 	})
@@ -205,11 +243,12 @@ func run(ctx context.Context, logger log.Logger) error {
 	return errors.Join(err, <-probesDone, <-internalDone)
 }
 
-// serveInternal serves the HTML the renderer fetches until ctx is cancelled.
-func serveInternal(ctx context.Context, lis net.Listener, h *policyhttp.Handler) error {
+// serveInternal serves the HTML the renderer fetches, behind guard, until ctx
+// is cancelled.
+func serveInternal(ctx context.Context, lis net.Listener, h *policyhttp.Handler, guard func(http.Handler) http.Handler) error {
 	mux := http.NewServeMux()
 	h.Mount(mux)
-	srv := &http.Server{Handler: mux, ReadHeaderTimeout: 5 * time.Second}
+	srv := &http.Server{Handler: guard(mux), ReadHeaderTimeout: 5 * time.Second}
 	errCh := make(chan error, 1)
 	go func() { errCh <- srv.Serve(lis) }()
 	select {

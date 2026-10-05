@@ -4,12 +4,17 @@
 package config
 
 import (
+	"errors"
 	"os"
+	"strings"
 	"testing"
 	"time"
+
+	"github.com/Steward-GRC/steward-delivery/internal/workloadauth"
 )
 
 func TestLoadDefaults(t *testing.T) {
+	t.Setenv("WORKLOAD_AUTH", "disabled")
 	t.Setenv("DATABASE_DSN", "postgres://delivery")
 	t.Setenv("CORE_GRPC_ADDR", "policy-core:9090")
 
@@ -51,6 +56,7 @@ func TestLoadDefaults(t *testing.T) {
 }
 
 func TestLoadPDFExportEnabledOverride(t *testing.T) {
+	t.Setenv("WORKLOAD_AUTH", "disabled")
 	t.Setenv("DATABASE_DSN", "postgres://delivery")
 	t.Setenv("CORE_GRPC_ADDR", "policy-core:9090")
 	t.Setenv("PDF_EXPORT_ENABLED", "false")
@@ -65,6 +71,7 @@ func TestLoadPDFExportEnabledOverride(t *testing.T) {
 }
 
 func TestLoadOverrides(t *testing.T) {
+	t.Setenv("WORKLOAD_AUTH", "disabled")
 	t.Setenv("DATABASE_DSN", "postgres://delivery")
 	t.Setenv("CORE_GRPC_ADDR", "policy-core:9090")
 	t.Setenv("S3_ENDPOINT", "https://objects.example.org")
@@ -129,6 +136,7 @@ func TestLoadS3EndpointNeedsABucket(t *testing.T) {
 }
 
 func TestLoadProbeAndLinkDefaults(t *testing.T) {
+	t.Setenv("WORKLOAD_AUTH", "disabled")
 	t.Setenv("DATABASE_DSN", "postgres://delivery")
 	t.Setenv("CORE_GRPC_ADDR", "core:9090")
 	c, err := Load()
@@ -143,5 +151,66 @@ func TestLoadProbeAndLinkDefaults(t *testing.T) {
 	}
 	if c.MigrateDSN != "postgres://delivery" {
 		t.Errorf("MigrateDSN should default to DATABASE_DSN: %q", c.MigrateDSN)
+	}
+}
+
+func setWorkloadAuth(t *testing.T) {
+	t.Helper()
+	t.Setenv("DATABASE_DSN", "postgres://delivery")
+	t.Setenv("CORE_GRPC_ADDR", "core:9090")
+	t.Setenv("WORKLOAD_OIDC_ISSUER", "https://issuer.example.org")
+	t.Setenv("WORKLOAD_ALLOWED_SERVICEACCOUNTS", "steward/steward-gateway")
+	t.Setenv("WORKLOAD_TOKEN_FILE", "/var/run/secrets/steward/token")
+}
+
+func TestLoadWorkloadAuth(t *testing.T) {
+	setWorkloadAuth(t)
+	c, err := Load()
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if !c.WorkloadAuthEnabled || c.WorkloadAuth.Audience != "steward" || len(c.WorkloadAuth.AllowedServiceAccounts) != 1 {
+		t.Errorf("WorkloadAuth: enabled=%v %+v", c.WorkloadAuthEnabled, c.WorkloadAuth)
+	}
+	if c.WorkloadTokenFile != "/var/run/secrets/steward/token" {
+		t.Errorf("WorkloadTokenFile: %q", c.WorkloadTokenFile)
+	}
+}
+
+func TestLoadFailsClosedWithoutAnIssuer(t *testing.T) {
+	setWorkloadAuth(t)
+	t.Setenv("WORKLOAD_OIDC_ISSUER", "")
+	if _, err := Load(); !errors.Is(err, workloadauth.ErrNotConfigured) {
+		t.Fatalf("want ErrNotConfigured, got %v", err)
+	}
+}
+
+func TestLoadNeedsATokenFileToCallCore(t *testing.T) {
+	setWorkloadAuth(t)
+	t.Setenv("WORKLOAD_TOKEN_FILE", "")
+	_, err := Load()
+	if err == nil || !strings.Contains(err.Error(), "WORKLOAD_TOKEN_FILE") {
+		t.Fatalf("want an error naming WORKLOAD_TOKEN_FILE, got %v", err)
+	}
+}
+
+func TestLoadDisabledNeedsNoIssuerOrTokenFile(t *testing.T) {
+	t.Setenv("DATABASE_DSN", "postgres://delivery")
+	t.Setenv("CORE_GRPC_ADDR", "core:9090")
+	t.Setenv("WORKLOAD_AUTH", "disabled")
+	c, err := Load()
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if c.WorkloadAuthEnabled || c.WorkloadTokenFile != "" {
+		t.Errorf("disabled: enabled=%v token file %q", c.WorkloadAuthEnabled, c.WorkloadTokenFile)
+	}
+}
+
+func TestLoadRejectsAnUnknownAuthMode(t *testing.T) {
+	setWorkloadAuth(t)
+	t.Setenv("WORKLOAD_AUTH", "off")
+	if _, err := Load(); err == nil || !strings.Contains(err.Error(), "WORKLOAD_AUTH") {
+		t.Fatalf("want an error naming WORKLOAD_AUTH, got %v", err)
 	}
 }

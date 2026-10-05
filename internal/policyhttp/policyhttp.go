@@ -3,9 +3,9 @@
 
 // Package policyhttp serves the rendered policy HTML over plain HTTP for the
 // steward-pdf-renderer job to fetch, at GET /internal/policies/{versionId}/html.
-// It has no authentication of its own: it listens on its own port, which must
-// only be reachable from inside the cluster (a NetworkPolicy that admits the
-// renderer's pods).
+// The server puts it behind the workload-token check (server.HTTPAuth), which
+// admits only steward-pdf-renderer, on its own port; a NetworkPolicy that
+// admits the renderer's pods is defence in depth.
 package policyhttp
 
 import (
