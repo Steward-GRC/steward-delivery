@@ -55,6 +55,10 @@ Delivery never imports another service's Go module. It pins the protos it uses i
 | steward-core | `STEWARD_CORE_REF` | `PolicyService.GetPolicyVersion`, `GetPolicy`, `DiffVersions`; `AppendixService.ListAppendices` |
 | steward-audit | `STEWARD_AUDIT_REF` | the `AuditEvent` message it publishes |
 
+Every call carries delivery's workload token (`WORKLOAD_TOKEN_FILE`), and core allows delivery
+only the calls above; see [configuration](configuration.md#service-to-service-authentication).
+Callers of delivery's own API need the same: the gateway is the only one.
+
 To try an unmerged proto change, point `STEWARD_CORE_PROTO_DIR` or `STEWARD_AUDIT_PROTO_DIR` at a
 local `proto/` directory and run `task proto`. Bump a pin and commit the regenerated `gen/` in the
 same change.
