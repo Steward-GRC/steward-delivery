@@ -1,0 +1,14 @@
+{
+  "root": { "type": "root", "children": [
+    { "type": "SectionNode", "sectionKey": "steps", "title": "Steps", "children": [
+      { "type": "BoilerplateNode", "children": [
+        { "type": "paragraph", "children": [{ "type": "text", "text": "Report a lost device within one hour." }] },
+        { "type": "paragraph", "children": [{ "type": "text", "text": "Never share a device's <passcode>." }] }
+      ]},
+      { "type": "EditableRegionNode", "children": [
+        { "type": "paragraph", "children": [{ "type": "text", "text": "Call the service desk — it’s open 24/7." }] }
+      ]}
+    ]}
+  ]},
+  "sensitivity": true
+}

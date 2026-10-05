@@ -1,0 +1,18 @@
+{
+  "root": { "type": "root", "children": [
+    { "type": "SectionNode", "sectionKey": "purpose", "title": "Purpose", "children": [
+      { "type": "BoilerplateNode", "children": [
+        { "type": "text", "text": "This policy sets how staff book desks at Example Organisation." }
+      ]},
+      { "type": "EditableRegionNode", "children": [
+        { "type": "paragraph", "children": [{ "type": "text", "text": "Book a desk at least one day ahead." }] }
+      ]}
+    ]},
+    { "type": "SectionNode", "sectionKey": "scope", "title": "Scope & audience", "children": [
+      { "type": "EditableRegionNode", "children": [
+        { "type": "paragraph", "children": [{ "type": "text", "text": "All staff in the Facilities team's buildings." }] }
+      ]}
+    ]}
+  ]},
+  "sensitivity": false
+}
