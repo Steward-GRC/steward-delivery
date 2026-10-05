@@ -48,6 +48,7 @@ result is reused for 5 seconds.
 | `Unauthenticated: workload token rejected` on delivery's API | The log line `caller token rejected` gives the reason: wrong `iss` or `aud`, expired, or a service account missing from `WORKLOAD_ALLOWED_SERVICEACCOUNTS`. |
 | `PermissionDenied: caller not allowed on this method` | Only the gateway may call delivery's API; the `rpc.denied` audit event names the caller. |
 | `Unavailable: workload verifier unavailable` | No JWKS has loaded since start: `steward-depstate-jwks`, then the `JWKS refresh failed` log line. |
+| The renderer's HTML fetch gets 401 or 403 | 401: the renderer Job sent no token or a rejected one (its `WORKLOAD_TOKEN_FILE` mount, audience `steward`, and `steward/steward-pdf-renderer` in `WORKLOAD_ALLOWED_SERVICEACCOUNTS`). 403: the token belongs to another caller. |
 | The "Workload auth copy" check fails | `internal/workloadauth` was edited here or `STEWARD_CORE_REF` moved: copy the package again from steward-core at the pin. |
 | No events reach audit | `steward-depstate-rabbitmq` or `/readyz`, then the `audit` exchange and its binding to audit's queue. |
 

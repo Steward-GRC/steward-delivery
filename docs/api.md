@@ -26,8 +26,9 @@ and `steward-depstate-<name>` headers. `/livez` and `/readyz` serve the same ove
 ## Internal HTTP
 
 `GET /internal/policies/{versionId}/html` on `INTERNAL_HTTP_PORT` returns the rendered version
-with its appendices, for the renderer job to print. It has no authentication of its own: allow
-only the renderer's pods to reach that port (a NetworkPolicy). An unknown version answers 404, so
+with its appendices, for the renderer job to print. The request needs the renderer's workload token
+as `Authorization: Bearer <token>`: 401 without a valid one, 403 for any caller but `pdf-renderer`.
+A NetworkPolicy that admits only the renderer's pods is defence in depth. An unknown version answers 404, so
 the renderer fails the job instead of retrying.
 
 ## Events out
@@ -57,7 +58,7 @@ Delivery never imports another service's Go module. It pins the protos it uses i
 
 Every call carries delivery's workload token (`WORKLOAD_TOKEN_FILE`), and core allows delivery
 only the calls above; see [configuration](configuration.md#service-to-service-authentication).
-Callers of delivery's own API need the same: the gateway is the only one.
+Callers of delivery need the same: the gateway on the gRPC API, and the PDF renderer on the internal HTML port.
 
 To try an unmerged proto change, point `STEWARD_CORE_PROTO_DIR` or `STEWARD_AUDIT_PROTO_DIR` at a
 local `proto/` directory and run `task proto`. Bump a pin and commit the regenerated `gen/` in the

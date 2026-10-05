@@ -70,3 +70,7 @@ func TestAuditDenialRecordsTheCallerNotAClaimedUser(t *testing.T) {
 	}, rec.evs[0].Attributes)
 	require.Equal(t, "service:unauthenticated", rec.evs[1].ActorUserID)
 }
+
+func TestInternalHTTPCallersAreTheRendererOnly(t *testing.T) {
+	require.Equal(t, []string{"pdf-renderer"}, InternalHTTPCallers)
+}

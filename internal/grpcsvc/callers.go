@@ -13,10 +13,15 @@ import (
 	"github.com/Steward-GRC/steward-delivery/internal/workloadauth"
 )
 
-// CallerGateway is the only gRPC caller, from the service account
-// steward-gateway. The PDF renderer fetches HTML over the internal HTTP port,
-// not gRPC.
-const CallerGateway = "gateway"
+// Caller names, from the service accounts steward-<name>. The gateway is the
+// only gRPC caller; the PDF renderer fetches HTML over the internal HTTP port.
+const (
+	CallerGateway     = "gateway"
+	CallerPDFRenderer = "pdf-renderer"
+)
+
+// InternalHTTPCallers may fetch the policy HTML from the internal HTTP port.
+var InternalHTTPCallers = []string{CallerPDFRenderer}
 
 // CallerPolicy is delivery's per-method allow-list: the gateway, on behalf of
 // the signed-in user, on every method. Anything else is refused.

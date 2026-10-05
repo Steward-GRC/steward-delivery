@@ -181,6 +181,7 @@ func run(ctx context.Context, logger log.Logger) error {
 		WithPDFLinkTTL(cfg.PDFLinkTTL)
 
 	var auth *server.Auth
+	guardInternal := func(h http.Handler) http.Handler { return h }
 	if cfg.WorkloadAuthEnabled {
 		v, err := workloadauth.NewVerifier(cfg.WorkloadAuth, logger)
 		if err != nil {
@@ -191,6 +192,7 @@ func run(ctx context.Context, logger log.Logger) error {
 		auth = &server.Auth{Verifier: v, Policy: grpcsvc.CallerPolicy(), Options: []workloadauth.Option{
 			workloadauth.WithDenyHook(grpcsvc.AuditDenial(auditor, logger)),
 		}}
+		guardInternal = server.HTTPAuth(v, grpcsvc.InternalHTTPCallers, logger, grpcsvc.AuditDenial(auditor, logger))
 		logger.Info("service-to-service authentication on",
 			log.F("issuer", cfg.WorkloadAuth.Issuer), log.F("audience", cfg.WorkloadAuth.Audience),
 			log.F("jwks_override", cfg.WorkloadAuth.JWKSURL != ""), log.F("ca_file", cfg.WorkloadAuth.CAFile != ""),
@@ -230,7 +232,7 @@ func run(ctx context.Context, logger log.Logger) error {
 	}()
 	internalDone := make(chan error, 1)
 	go func() {
-		internalDone <- serveInternal(ctx, internalLis, policyhttp.NewWithAppendix(policyClient, appendixClient, nil).WithLogger(logger))
+		internalDone <- serveInternal(ctx, internalLis, policyhttp.NewWithAppendix(policyClient, appendixClient, nil).WithLogger(logger), guardInternal)
 		cancel()
 	}()
 	opts := server.Options{CertFile: cfg.TLSCertFile, KeyFile: cfg.TLSKeyFile, ClientCAFile: cfg.TLSClientCAFile, Auth: auth, Checker: checker}
@@ -241,11 +243,12 @@ func run(ctx context.Context, logger log.Logger) error {
 	return errors.Join(err, <-probesDone, <-internalDone)
 }
 
-// serveInternal serves the HTML the renderer fetches until ctx is cancelled.
-func serveInternal(ctx context.Context, lis net.Listener, h *policyhttp.Handler) error {
+// serveInternal serves the HTML the renderer fetches, behind guard, until ctx
+// is cancelled.
+func serveInternal(ctx context.Context, lis net.Listener, h *policyhttp.Handler, guard func(http.Handler) http.Handler) error {
 	mux := http.NewServeMux()
 	h.Mount(mux)
-	srv := &http.Server{Handler: mux, ReadHeaderTimeout: 5 * time.Second}
+	srv := &http.Server{Handler: guard(mux), ReadHeaderTimeout: 5 * time.Second}
 	errCh := make(chan error, 1)
 	go func() { errCh <- srv.Serve(lis) }()
 	select {

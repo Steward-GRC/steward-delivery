@@ -12,7 +12,7 @@ problem listed. `.env.example` has local defaults.
 | `CORE_GRPC_ADDR` | required | steward-core's gRPC address. |
 | `GRPC_PORT` | `9090` | The gRPC port. |
 | `PROBE_PORT` | `8080` | `/livez` and `/readyz`. |
-| `INTERNAL_HTTP_PORT` | `8081` | The policy HTML the renderer fetches. Reachable from the renderer only. |
+| `INTERNAL_HTTP_PORT` | `8081` | The policy HTML the renderer fetches. Needs the renderer's workload token (see below). |
 | `INTERNAL_BASE_URL` | empty | The in-cluster URL of that port, the prefix of every render's fetch URL. |
 | `GRPC_TLS_CERT_FILE`, `GRPC_TLS_KEY_FILE`, `GRPC_TLS_CLIENT_CA_FILE` | empty | Set all three to serve mTLS (TLS 1.3, client certificates required). |
 | `WORKLOAD_TOKEN_FILE` | required | Delivery's projected service-account token (audience `steward`, mounted at `/var/run/secrets/steward/token`), sent to steward-core on every call. Optional only with `WORKLOAD_AUTH=disabled`. |
@@ -21,7 +21,7 @@ problem listed. `.env.example` has local defaults.
 | `WORKLOAD_OIDC_CA_FILE` | system roots | Extra PEM CA trusted for the discovery and JWKS fetch (the cluster CA). |
 | `WORKLOAD_OIDC_BEARER_FILE` | empty | A token sent on the discovery and JWKS fetch, re-read on every fetch (the pod's API token). |
 | `WORKLOAD_AUDIENCE` | `steward` | The audience a caller's token must carry. |
-| `WORKLOAD_ALLOWED_SERVICEACCOUNTS` | required | Comma list of `<namespace>/<serviceaccount>` that may call delivery's gRPC API at all: `steward/steward-gateway`. |
+| `WORKLOAD_ALLOWED_SERVICEACCOUNTS` | required | Comma list of `<namespace>/<serviceaccount>` that may call delivery at all: `steward/steward-gateway,steward/steward-pdf-renderer`. |
 | `WORKLOAD_AUTH` | enabled | `disabled` turns caller authentication off, for local runs only. Nothing else turns it off, and it can't be combined with `WORKLOAD_OIDC_ISSUER`. |
 | `OTEL_EXPORTER_OTLP_ENDPOINT` | `localhost:4317` | Traces and metrics. |
 | `MAGIC_LINK_NONSENSITIVE_TTL` | `720h` | A magic link's lifetime. |
@@ -44,8 +44,12 @@ problem listed. `.env.example` has local defaults.
 - **Its own API:** every call to delivery's gRPC API must carry the caller's token. Delivery
   verifies it against the issuer's JWKS, maps `<namespace>/steward-<name>` to the caller `<name>`,
   and checks the per-method allow-list in `internal/grpcsvc/callers.go`. The gateway is the only
-  caller, on behalf of the signed-in user, on every method. The PDF renderer reads HTML from the
-  internal HTTP port, not gRPC.
+  caller, on behalf of the signed-in user, on every method.
+- **The internal HTTP port:** `GET /internal/policies/{versionId}/html` needs
+  `Authorization: Bearer <token>` with the same check, and only `pdf-renderer` is allowed. A
+  missing or rejected token is 401, another verified caller 403, and a verifier with no key set
+  yet 503; each is audited as `rpc.denied` with the route as the method. The probes are on
+  `PROBE_PORT` and need no token.
 - **Refusals:** a missing or rejected token is `Unauthenticated`, a caller the method doesn't list
   is `PermissionDenied`, and a verifier that hasn't loaded a key set answers `Unavailable`. Each
   refusal is logged and audited as `rpc.denied`. `grpc.health.v1` and server reflection need no
