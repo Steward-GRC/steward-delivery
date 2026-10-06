@@ -157,7 +157,7 @@ func (h *Handler) serveHTML(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.Header().Set("Cache-Control", "no-store")
-	_, _ = w.Write([]byte(out))
+	_, _ = w.Write([]byte(out)) // #nosec G705 -- render.RenderHTML escapes every text value and emits only contract tags; appendix titles are escaped in appendHTML
 }
 
 // ErrNotFound is the sentinel a policy client wraps for an unknown version.
