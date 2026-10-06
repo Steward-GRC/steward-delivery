@@ -17,9 +17,11 @@ import (
 	"os"
 	"path/filepath"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
+	"github.com/Bugs5382/go-buildinfo/health"
 	log "github.com/Bugs5382/go-log"
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/stretchr/testify/require"
@@ -32,6 +34,7 @@ import (
 	"google.golang.org/grpc/status"
 
 	deliveryv1 "github.com/Steward-GRC/steward-delivery/gen/go/steward/delivery/v1"
+	"github.com/Steward-GRC/steward-delivery/internal/readiness"
 	"github.com/Steward-GRC/steward-delivery/internal/workloadauth"
 )
 
@@ -42,6 +45,9 @@ const testNS = "steward"
 type localIssuer struct {
 	url, caFile string
 	key         *ecdsa.PrivateKey
+	// jwksStatus, when set, is the status the JWKS endpoint answers instead
+	// of the key set.
+	jwksStatus atomic.Int32
 }
 
 func newLocalIssuer(t *testing.T) *localIssuer {
@@ -54,6 +60,10 @@ func newLocalIssuer(t *testing.T) *localIssuer {
 		_ = json.NewEncoder(w).Encode(map[string]string{"issuer": iss.url, "jwks_uri": iss.url + "/openid/v1/jwks"})
 	})
 	mux.HandleFunc("/openid/v1/jwks", func(w http.ResponseWriter, _ *http.Request) {
+		if code := iss.jwksStatus.Load(); code != 0 {
+			http.Error(w, http.StatusText(int(code)), int(code))
+			return
+		}
 		pub, err := key.PublicKey.ECDH()
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -231,4 +241,81 @@ func TestClientAuthWithNoTokenFileSendsNone(t *testing.T) {
 	opts, err := ClientAuth("")
 	require.NoError(t, err)
 	require.Empty(t, opts, "only with WORKLOAD_AUTH=disabled, which config enforces")
+}
+
+type upDB struct{}
+
+func (upDB) Ping(context.Context) error                    { return nil }
+func (upDB) ServerVersion(context.Context) (string, error) { return "16.4", nil }
+
+type upBroker struct{}
+
+func (upBroker) Healthy() bool { return true }
+
+type upCore struct{}
+
+func (upCore) Check(context.Context) error             { return nil }
+func (upCore) Version(context.Context) (string, error) { return "dev", nil }
+
+// The issuer refusing the JWKS fetch (as an API server does for a bearer with
+// the wrong audience) must never leave the verifier inert: a valid-looking
+// token is refused on the gRPC port and the internal render port, and
+// readiness drains the pod on both probes.
+func TestWorkloadAuthFailsClosedWhileTheJWKSIsRefused(t *testing.T) {
+	iss := newLocalIssuer(t)
+	iss.jwksStatus.Store(http.StatusUnauthorized)
+	v, err := workloadauth.NewVerifier(workloadauth.Config{
+		Issuer: iss.url, CAFile: iss.caFile, Audience: "steward",
+		AllowedServiceAccounts: []string{testNS + "/steward-gateway", testNS + "/steward-pdf-renderer"},
+	}, log.Nop())
+	require.NoError(t, err)
+	require.Error(t, v.Refresh(context.Background()), "a 401 from the JWKS is a failed refresh")
+
+	checker, err := readiness.New(readiness.Deps{Postgres: upDB{}, Broker: upBroker{}, Core: upCore{},
+		JWKS: readiness.RecheckEvery(v.Refresh, time.Minute, time.Now)}, health.WithTTL(time.Millisecond))
+	require.NoError(t, err)
+	conn, stop := serve(t, Options{Checker: checker, CheckInterval: 20 * time.Millisecond, Auth: &Auth{
+		Verifier: v,
+		Policy:   workloadauth.Policy{getDiff: {"gateway": workloadauth.OnBehalf}},
+	}})
+	defer stop()
+
+	require.Equal(t, codes.Unavailable, callDiff(conn, bearerCtx(iss.token(t, "steward-gateway", "steward"))),
+		"refused before the handler, which would answer Unimplemented")
+
+	internal := httptest.NewServer(HTTPAuth(v, []string{"pdf-renderer"}, log.Nop(), nil)(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
+		t.Error("the render handler ran without a verified caller")
+	})))
+	defer internal.Close()
+	code, _ := getHTML(t, internal, "Bearer "+iss.token(t, "steward-pdf-renderer", "steward"))
+	require.Equal(t, http.StatusServiceUnavailable, code)
+
+	hc := healthpb.NewHealthClient(conn)
+	for _, svc := range []string{"", ReadinessService} {
+		r, err := hc.Check(context.Background(), &healthpb.HealthCheckRequest{Service: svc})
+		require.NoError(t, err)
+		require.Equal(t, healthpb.HealthCheckResponse_NOT_SERVING, r.GetStatus(), "service %q", svc)
+	}
+	rep := checker.Report(context.Background())
+	require.False(t, rep.Ready)
+	var jwks *health.DependencyReport
+	for i := range rep.Dependencies {
+		if rep.Dependencies[i].Name == readiness.JWKS {
+			jwks = &rep.Dependencies[i]
+		}
+	}
+	require.NotNil(t, jwks, "the key set is listed in the readiness report")
+	require.True(t, jwks.Required)
+	require.Equal(t, health.StateDown, jwks.State)
+
+	lis, err := net.Listen("tcp", "127.0.0.1:0")
+	require.NoError(t, err)
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() { done <- ServeProbes(ctx, lis, checker) }()
+	defer func() { cancel(); require.NoError(t, <-done) }()
+	res, err := http.Get("http://" + lis.Addr().String() + "/readyz")
+	require.NoError(t, err)
+	_ = res.Body.Close()
+	require.Equal(t, http.StatusServiceUnavailable, res.StatusCode)
 }
