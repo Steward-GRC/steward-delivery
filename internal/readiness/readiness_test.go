@@ -164,3 +164,14 @@ func TestRecheckEveryKeepsASuccessAndRetriesAFailure(t *testing.T) {
 	fail.Store(false)
 	require.NoError(t, check(ctx))
 }
+
+func TestPDFExportOffForAMissingPieceDegradesButStaysReady(t *testing.T) {
+	d := required()
+	d.PDFExportOff = errors.New("PDF export is off: S3_ENDPOINT and S3_BUCKET are not set")
+	r := checker(t, d).Report(context.Background())
+	require.True(t, r.Ready, "only PDF export is lost")
+	require.Equal(t, health.StateDegraded, r.Status)
+	pdf := dep(t, r, readiness.PDFExport)
+	require.False(t, pdf.Required)
+	require.Equal(t, health.StateDegraded, pdf.State)
+}

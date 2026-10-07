@@ -140,6 +140,21 @@ func Load() (Config, error) {
 	return c, errors.Join(errs...)
 }
 
+// PDFExportMissing lists the settings PDF export needs that aren't set:
+// without object storage a render has no bucket to write to and nothing can
+// be downloaded, and without INTERNAL_BASE_URL the renderer has no URL to
+// fetch the policy from.
+func (c Config) PDFExportMissing() []string {
+	var missing []string
+	if c.S3Endpoint == "" || c.S3Bucket == "" {
+		missing = append(missing, "S3_ENDPOINT and S3_BUCKET")
+	}
+	if c.InternalBaseURL == "" {
+		missing = append(missing, "INTERNAL_BASE_URL")
+	}
+	return missing
+}
+
 func getOr(k, d string) string {
 	if v := os.Getenv(k); v != "" {
 		return v

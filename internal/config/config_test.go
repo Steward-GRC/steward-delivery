@@ -214,3 +214,20 @@ func TestLoadRejectsAnUnknownAuthMode(t *testing.T) {
 		t.Fatalf("want an error naming WORKLOAD_AUTH, got %v", err)
 	}
 }
+
+func TestPDFExportMissingNamesEveryUnsetPiece(t *testing.T) {
+	c := Config{PDFExportEnabled: true}
+	got := c.PDFExportMissing()
+	want := []string{"S3_ENDPOINT and S3_BUCKET", "INTERNAL_BASE_URL"}
+	if strings.Join(got, ",") != strings.Join(want, ",") {
+		t.Fatalf("PDFExportMissing: got %v, want %v", got, want)
+	}
+}
+
+func TestPDFExportMissingIsEmptyWhenEverythingIsSet(t *testing.T) {
+	c := Config{PDFExportEnabled: true, S3Endpoint: "http://objects.example.org:9000", S3Bucket: "steward-artifacts",
+		InternalBaseURL: "http://steward-delivery:8082"}
+	if got := c.PDFExportMissing(); len(got) != 0 {
+		t.Fatalf("PDFExportMissing: got %v, want none", got)
+	}
+}
