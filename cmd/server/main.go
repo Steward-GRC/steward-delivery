@@ -149,11 +149,16 @@ func run(ctx context.Context, logger log.Logger) error {
 
 	jobStore := store.NewPDFJobRepo(db)
 	var pdfClient grpcsvc.PDFRenderClient
+	missing := cfg.PDFExportMissing()
 	switch restCfg, err := rest.InClusterConfig(); {
 	case !cfg.PDFExportEnabled:
 		logger.Info("PDF export is off (PDF_EXPORT_ENABLED=false)")
 	case err != nil:
 		logger.Warn("no in-cluster Kubernetes config: PDF export is off", log.F("error", err.Error()))
+		deps.PDFExportOff = fmt.Errorf("PDF export is off: no in-cluster Kubernetes config: %w", err)
+	case len(missing) > 0:
+		logger.Warn("PDF export is off: settings missing", log.F("missing", strings.Join(missing, ", ")))
+		deps.PDFExportOff = fmt.Errorf("PDF export is off: %s not set", strings.Join(missing, ", "))
 	default:
 		dyn, err := dynamic.NewForConfig(restCfg)
 		if err != nil {

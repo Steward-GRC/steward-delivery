@@ -5,8 +5,10 @@
 The service applies the baseline migration, connects to Postgres and RabbitMQ, dials steward-core
 and serves gRPC, the probes and the internal HTTP port. A bad setting stops it with every problem
 listed. PDF export is optional: with `PDF_EXPORT_ENABLED=false` or outside a cluster,
-`RequestPDFExport` answers `PDF_EXPORT_DISABLED`; without `S3_ENDPOINT`, so does
-`GetPDFDownloadLink`. Rendering, diffs and magic links still work.
+`RequestPDFExport` answers `PDF_EXPORT_DISABLED`. Export also stays off, and answers the same,
+until `S3_ENDPOINT`, `S3_BUCKET` and `INTERNAL_BASE_URL` are all set: without them a render has no
+bucket to write to and no URL to fetch from. Without `S3_ENDPOINT`, `GetPDFDownloadLink` answers
+`PDF_EXPORT_DISABLED` too. Rendering, diffs and magic links still work.
 
 ## Probes
 
@@ -21,6 +23,7 @@ result is reused for 5 seconds.
 | `objectstore` | no, reported when `S3_ENDPOINT` is set | Degraded, still ready: only PDF downloads fail. |
 | `jwks` | yes, while service-to-service authentication is on | Not ready: no caller can be verified. A good fetch keeps it up for a minute; a failure is retried on the next probe. The verifier keeps its last good key set either way. |
 | `workloadauth` | no, reported only with `WORKLOAD_AUTH=disabled` | Always degraded: every caller that reaches the port is served. Never run like this outside local development. |
+| `pdfexport` | no, reported only while `PDF_EXPORT_ENABLED` is on but export is off | Always degraded, still ready: the message names what is missing (the in-cluster config, `S3_ENDPOINT` and `S3_BUCKET`, or `INTERNAL_BASE_URL`). |
 | `kubernetes` | no, reported while PDF export is on | Degraded, still ready: only new exports fail. Fails too when the CRD is missing or the service account can't list `pdfrenders`. |
 
 - **HTTP on `PROBE_PORT` (8080):** `GET /livez` is 200 while the process is up and never checks a
@@ -39,7 +42,7 @@ result is reused for 5 seconds.
 | --- | --- |
 | `Code 8001: Internal Error` | A store call failed. The log line with the same trace id names the `op`. |
 | `CORE_UNAVAILABLE` | steward-core is down or unreachable at `CORE_GRPC_ADDR`; `steward-depstate-core`. |
-| `PDF_EXPORT_DISABLED` | `PDF_EXPORT_ENABLED`, the in-cluster config, and `S3_ENDPOINT` for downloads. |
+| `PDF_EXPORT_DISABLED` | The `pdfexport` entry in `/readyz` (what is missing), or `PDF_EXPORT_ENABLED=false`. |
 | Exports stay `PDF_EXPORT_NOT_READY` | The renderer isn't reconciling: `kubectl get pdfrenders`, the renderer's logs, and whether it can reach `INTERNAL_BASE_URL`. |
 | `PDF_EXPORT_FAILED` | `pdf_jobs.error_msg` for the job, or the resource's `status.error`. |
 | Delivery won't start: `WORKLOAD_TOKEN_FILE` | The projected token isn't mounted, or `WORKLOAD_TOKEN_FILE` points elsewhere. |

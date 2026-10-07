@@ -5,7 +5,8 @@
 // health checker. Postgres, RabbitMQ and steward-core are required: without
 // them delivery can't store a link, audit it, or read the content it renders.
 // Object storage and the Kubernetes API serve only PDF export, so an outage
-// there degrades delivery instead of draining it. While service-to-service
+// there degrades delivery instead of draining it, and so does export being off
+// for a missing setting. While service-to-service
 // authentication is on, the issuer's key set is required too: without it no
 // caller can be verified. With it switched off (WORKLOAD_AUTH=disabled),
 // delivery reports itself degraded.
@@ -34,6 +35,9 @@ const (
 	Core        = "core"
 	ObjectStore = "objectstore"
 	Kubernetes  = "kubernetes"
+	// PDFExport is reported, degraded, only while export is wanted but off
+	// for a missing piece.
+	PDFExport = "pdfexport"
 	// JWKS is the workload-token issuer's key set.
 	JWKS = "jwks"
 	// WorkloadAuth is reported, degraded, only while authentication is off.
@@ -67,6 +71,9 @@ type Deps struct {
 	JWKS func(ctx context.Context) error
 	// WorkloadAuthDisabled reports WORKLOAD_AUTH=disabled as degraded.
 	WorkloadAuthDisabled bool
+	// PDFExportOff is why export is off although PDF_EXPORT_ENABLED is on;
+	// nil reports nothing.
+	PDFExportOff error
 }
 
 var (
@@ -94,6 +101,10 @@ func New(d Deps, opts ...health.Option) (*health.Checker, error) {
 	}
 	if d.JWKS != nil {
 		deps = append(deps, health.Dependency{Name: JWKS, Required: true, Check: d.JWKS})
+	}
+	if d.PDFExportOff != nil {
+		off := d.PDFExportOff
+		deps = append(deps, health.Dependency{Name: PDFExport, Check: func(context.Context) error { return off }})
 	}
 	if d.WorkloadAuthDisabled {
 		deps = append(deps, health.Dependency{Name: WorkloadAuth, Check: func(context.Context) error { return errWorkloadAuthDisabled }})

@@ -27,9 +27,9 @@ problem listed. `.env.example` has local defaults.
 | `MAGIC_LINK_NONSENSITIVE_TTL` | `720h` | A magic link's lifetime. |
 | `MAGIC_LINK_SENSITIVE_TTL` | `48h` | A sensitive magic link's lifetime. |
 | `PDF_LINK_TTL` | `15m` | A PDF download link's lifetime. |
-| `PDF_EXPORT_ENABLED` | `true` | `false` when steward-pdf-renderer isn't deployed. Outside a cluster export is off anyway. |
+| `PDF_EXPORT_ENABLED` | `true` | `false` when steward-pdf-renderer isn't deployed. Export is on only in a cluster, with `S3_ENDPOINT`, `S3_BUCKET` and `INTERNAL_BASE_URL` set; otherwise readiness reports `pdfexport` degraded with what is missing. |
 | `POD_NAMESPACE` | `default` | Where `PdfRender` resources are created (set from the downward API). |
-| `S3_ENDPOINT`, `S3_BUCKET` | empty | The bucket the renderer writes PDFs to; set both or neither. Without them download links are off. |
+| `S3_ENDPOINT`, `S3_BUCKET` | empty | The bucket the renderer writes PDFs to; set both or neither. Without them PDF export and download links are off. |
 | `S3_REGION` | `us-east-1` | |
 | `S3_ACCESS_KEY`, `S3_SECRET_KEY` | empty | Static credentials. |
 | `S3_FORCE_PATH_STYLE` | `true` | Path-style addressing (RustFS and most self-hosted stores). |
