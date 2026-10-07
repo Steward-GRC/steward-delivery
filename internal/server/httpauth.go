@@ -11,7 +11,7 @@ import (
 	log "github.com/Bugs5382/go-log"
 	"google.golang.org/grpc/codes"
 
-	"github.com/Steward-GRC/steward-delivery/internal/workloadauth"
+	workloadidentity "github.com/Bugs5382/go-workload-identity"
 )
 
 // HTTPAuth guards an internal HTTP port with the same workload tokens as the
@@ -20,7 +20,7 @@ import (
 // is 401, a caller not on the list 403, and a verifier with no key set yet
 // 503. Each refusal is logged and passed to onDeny (nil skips it). The
 // handler runs with the Grant in its context.
-func HTTPAuth(v workloadauth.TokenVerifier, callers []string, lg log.Logger, onDeny workloadauth.DenyHook) func(http.Handler) http.Handler {
+func HTTPAuth(v workloadidentity.TokenVerifier, callers []string, lg log.Logger, onDeny workloadidentity.DenyHook) func(http.Handler) http.Handler {
 	if lg == nil {
 		lg = log.Nop()
 	}
@@ -32,7 +32,7 @@ func HTTPAuth(v workloadauth.TokenVerifier, callers []string, lg log.Logger, onD
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			route := r.Method + " " + r.URL.Path
-			deny := func(status int, d workloadauth.Denial) {
+			deny := func(status int, d workloadidentity.Denial) {
 				d.Method = route
 				lg.Ctx(r.Context()).Warn("request refused",
 					log.F("route", route), log.F("caller", d.Caller.Name), log.F("service_account", d.Caller.ServiceAccount),
@@ -47,23 +47,23 @@ func HTTPAuth(v workloadauth.TokenVerifier, callers []string, lg log.Logger, onD
 			}
 			tok, ok := bearerHeader(r)
 			if !ok {
-				deny(http.StatusUnauthorized, workloadauth.Denial{Code: codes.Unauthenticated, Reason: workloadauth.ReasonNoToken})
+				deny(http.StatusUnauthorized, workloadidentity.Denial{Code: codes.Unauthenticated, Reason: workloadidentity.ReasonNoToken})
 				return
 			}
 			c, err := v.Verify(tok)
 			switch {
-			case errors.Is(err, workloadauth.ErrUnavailable):
-				deny(http.StatusServiceUnavailable, workloadauth.Denial{Code: codes.Unavailable, Reason: workloadauth.ReasonUnavailable})
+			case errors.Is(err, workloadidentity.ErrUnavailable):
+				deny(http.StatusServiceUnavailable, workloadidentity.Denial{Code: codes.Unavailable, Reason: workloadidentity.ReasonUnavailable})
 				return
 			case err != nil:
-				deny(http.StatusUnauthorized, workloadauth.Denial{Code: codes.Unauthenticated, Reason: workloadauth.ReasonBadToken})
+				deny(http.StatusUnauthorized, workloadidentity.Denial{Code: codes.Unauthenticated, Reason: workloadidentity.ReasonBadToken})
 				return
 			case !allowed[c.Name]:
-				deny(http.StatusForbidden, workloadauth.Denial{Caller: c, Code: codes.PermissionDenied, Reason: workloadauth.ReasonMethodNotAllowed})
+				deny(http.StatusForbidden, workloadidentity.Denial{Caller: c, Code: codes.PermissionDenied, Reason: workloadidentity.ReasonMethodNotAllowed})
 				return
 			}
 			log.Trace(lg.Ctx(r.Context()), "request authorized", log.F("route", route), log.F("caller", c.Name))
-			next.ServeHTTP(w, r.WithContext(workloadauth.ContextWithGrant(r.Context(), workloadauth.Grant{Caller: c, Access: workloadauth.Self})))
+			next.ServeHTTP(w, r.WithContext(workloadidentity.ContextWithGrant(r.Context(), workloadidentity.Grant{Caller: c, Access: workloadidentity.Self})))
 		})
 	}
 }

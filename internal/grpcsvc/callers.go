@@ -8,9 +8,9 @@ import (
 
 	log "github.com/Bugs5382/go-log"
 
+	workloadidentity "github.com/Bugs5382/go-workload-identity"
 	deliveryv1 "github.com/Steward-GRC/steward-delivery/gen/go/steward/delivery/v1"
 	"github.com/Steward-GRC/steward-delivery/internal/audit"
-	"github.com/Steward-GRC/steward-delivery/internal/workloadauth"
 )
 
 // Caller names, from the service accounts steward-<name>. The gateway is the
@@ -25,11 +25,11 @@ var InternalHTTPCallers = []string{CallerPDFRenderer}
 
 // CallerPolicy is delivery's per-method allow-list: the gateway, on behalf of
 // the signed-in user, on every method. Anything else is refused.
-func CallerPolicy() workloadauth.Policy {
-	p := workloadauth.Policy{}
+func CallerPolicy() workloadidentity.Policy {
+	p := workloadidentity.Policy{}
 	sd := deliveryv1.DeliveryService_ServiceDesc
 	for _, md := range sd.Methods {
-		p["/"+sd.ServiceName+"/"+md.MethodName] = map[string]workloadauth.Access{CallerGateway: workloadauth.OnBehalf}
+		p["/"+sd.ServiceName+"/"+md.MethodName] = map[string]workloadidentity.Access{CallerGateway: workloadidentity.OnBehalf}
 	}
 	return p
 }
@@ -41,8 +41,8 @@ type eventEmitter interface {
 // AuditDenial records a call the workload-auth interceptor refused, as
 // rpc.denied in the audit tier. The actor is the authenticated caller (or
 // "unauthenticated"), never a user the call claimed.
-func AuditDenial(emitter eventEmitter, lg log.Logger) workloadauth.DenyHook {
-	return func(ctx context.Context, d workloadauth.Denial) {
+func AuditDenial(emitter eventEmitter, lg log.Logger) workloadidentity.DenyHook {
+	return func(ctx context.Context, d workloadidentity.Denial) {
 		caller := d.Caller.Name
 		if caller == "" {
 			caller = "unauthenticated"

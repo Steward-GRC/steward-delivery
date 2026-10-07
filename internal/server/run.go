@@ -29,7 +29,7 @@ import (
 	"google.golang.org/grpc/reflection"
 	"google.golang.org/grpc/status"
 
-	"github.com/Steward-GRC/steward-delivery/internal/workloadauth"
+	workloadidentity "github.com/Bugs5382/go-workload-identity"
 )
 
 // gracefulStopTimeout bounds the drain of in-flight RPCs on shutdown, so a
@@ -55,11 +55,11 @@ var reflectionServices = []string{"/grpc.reflection.v1.ServerReflection/", "/grp
 // Auth authenticates callers by their workload token (see
 // internal/workloadauth).
 type Auth struct {
-	Verifier workloadauth.TokenVerifier
+	Verifier workloadidentity.TokenVerifier
 	// Policy is the per-method caller allow-list.
-	Policy workloadauth.Policy
+	Policy workloadidentity.Policy
 	// Options tune the interceptors, typically a deny hook that audits.
-	Options []workloadauth.Option
+	Options []workloadidentity.Option
 }
 
 // Options are the transport and probe settings. Zero serves plain gRPC with
@@ -100,9 +100,9 @@ func Serve(ctx context.Context, lis net.Listener, lg log.Logger, opts Options, r
 	unary := []grpc.UnaryServerInterceptor{bi.UnaryServerInterceptor(), recoverUnary(lg)}
 	stream := []grpc.StreamServerInterceptor{bi.StreamServerInterceptor(), recoverStream(lg)}
 	if a := opts.Auth; a != nil {
-		waOpts := append([]workloadauth.Option{workloadauth.WithExempt(reflectionServices...)}, a.Options...)
-		unary = append(unary, workloadauth.UnaryServerInterceptor(a.Verifier, a.Policy, lg, waOpts...))
-		stream = append(stream, workloadauth.StreamServerInterceptor(a.Verifier, a.Policy, lg, waOpts...))
+		waOpts := append([]workloadidentity.Option{workloadidentity.WithExempt(reflectionServices...)}, a.Options...)
+		unary = append(unary, workloadidentity.UnaryServerInterceptor(a.Verifier, a.Policy, lg, waOpts...))
+		stream = append(stream, workloadidentity.StreamServerInterceptor(a.Verifier, a.Policy, lg, waOpts...))
 	}
 	serverOpts := []grpc.ServerOption{
 		grpc.StatsHandler(gootel.GRPCServerStatsHandler()),
@@ -152,8 +152,8 @@ func Serve(ctx context.Context, lis net.Listener, lg log.Logger, opts Options, r
 // boot; one that disappears later fails each call. An empty tokenFile sends
 // no token, which config allows only with WORKLOAD_AUTH=disabled.
 func ClientAuth(tokenFile string) ([]grpc.DialOption, error) {
-	opt, ok, err := workloadauth.DialOptionFromEnv(func(k string) string {
-		if k == workloadauth.EnvTokenFile {
+	opt, ok, err := workloadidentity.DialOptionFromEnv(func(k string) string {
+		if k == workloadidentity.EnvTokenFile {
 			return tokenFile
 		}
 		return ""
