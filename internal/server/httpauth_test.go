@@ -14,15 +14,16 @@ import (
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc/codes"
 
-	"github.com/Steward-GRC/steward-delivery/internal/workloadauth"
+	workloadidentity "github.com/Bugs5382/go-workload-identity"
+	"github.com/Steward-GRC/steward-delivery/internal/config"
 )
 
 type denials struct {
 	mu  sync.Mutex
-	got []workloadauth.Denial
+	got []workloadidentity.Denial
 }
 
-func (d *denials) record(_ context.Context, x workloadauth.Denial) {
+func (d *denials) record(_ context.Context, x workloadidentity.Denial) {
 	d.mu.Lock()
 	d.got = append(d.got, x)
 	d.mu.Unlock()
@@ -34,15 +35,15 @@ func (d *denials) record(_ context.Context, x workloadauth.Denial) {
 func httpAuthServe(t *testing.T) (*localIssuer, *httptest.Server, *denials) {
 	t.Helper()
 	iss := newLocalIssuer(t)
-	v, err := workloadauth.NewVerifier(workloadauth.Config{
-		Issuer: iss.url, CAFile: iss.caFile, Audience: "steward",
+	v, err := workloadidentity.NewVerifier(config.StewardWorkload(workloadidentity.Config{
+		Issuer: iss.url, CAFile: iss.caFile,
 		AllowedServiceAccounts: []string{testNS + "/steward-pdf-renderer", testNS + "/steward-gateway"},
-	}, log.Nop())
+	}), log.Nop())
 	require.NoError(t, err)
 	require.NoError(t, v.Refresh(context.Background()))
 	d := &denials{}
 	h := HTTPAuth(v, []string{"pdf-renderer"}, log.Nop(), d.record)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		g, ok := workloadauth.GrantFromContext(r.Context())
+		g, ok := workloadidentity.GrantFromContext(r.Context())
 		require.True(t, ok)
 		_, _ = w.Write([]byte(g.Caller.Name))
 	}))
@@ -80,7 +81,7 @@ func TestHTTPAuthRefusesAMissingToken(t *testing.T) {
 	require.Equal(t, http.StatusUnauthorized, code)
 	require.Len(t, d.got, 1)
 	require.Equal(t, codes.Unauthenticated, d.got[0].Code)
-	require.Equal(t, workloadauth.ReasonNoToken, d.got[0].Reason)
+	require.Equal(t, workloadidentity.ReasonNoToken, d.got[0].Reason)
 	require.Equal(t, "GET /internal/policies/v1/html", d.got[0].Method)
 }
 
@@ -109,8 +110,8 @@ func TestHTTPAuthRefusesAVerifiedCallerNotOnTheList(t *testing.T) {
 
 type unavailableVerifier struct{}
 
-func (unavailableVerifier) Verify(string) (workloadauth.Caller, error) {
-	return workloadauth.Caller{}, workloadauth.ErrUnavailable
+func (unavailableVerifier) Verify(string) (workloadidentity.Caller, error) {
+	return workloadidentity.Caller{}, workloadidentity.ErrUnavailable
 }
 
 func TestHTTPAuthFailsClosedWhileTheVerifierIsUnavailable(t *testing.T) {

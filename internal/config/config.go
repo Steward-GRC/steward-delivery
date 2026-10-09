@@ -10,7 +10,7 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/Steward-GRC/steward-delivery/internal/workloadauth"
+	workloadidentity "github.com/Bugs5382/go-workload-identity"
 )
 
 // Config is every setting the service runs with.
@@ -63,7 +63,7 @@ type Config struct {
 	// WorkloadAuth verifies the callers' workload tokens. It is set when
 	// WorkloadAuthEnabled; WORKLOAD_AUTH=disabled is the only way to turn it
 	// off.
-	WorkloadAuth        workloadauth.Config
+	WorkloadAuth        workloadidentity.Config
 	WorkloadAuthEnabled bool
 	// WorkloadTokenFile is delivery's own projected token, sent on every call
 	// to steward-core. Required unless WORKLOAD_AUTH=disabled.
@@ -103,17 +103,17 @@ func Load() (Config, error) {
 
 		PDFExportEnabled: boolOr("PDF_EXPORT_ENABLED", true),
 
-		WorkloadTokenFile: os.Getenv(workloadauth.EnvTokenFile),
+		WorkloadTokenFile: os.Getenv(workloadidentity.EnvTokenFile),
 	}
 	c.MigrateDSN = getOr("MIGRATE_DSN", c.DatabaseDSN)
 
 	var errs []error
 	var err error
-	if c.WorkloadAuth, c.WorkloadAuthEnabled, err = workloadauth.ServerConfigFromEnv(os.Getenv); err != nil {
+	if c.WorkloadAuth, c.WorkloadAuthEnabled, err = serverWorkloadConfig(os.Getenv); err != nil {
 		errs = append(errs, err)
 	}
-	if c.WorkloadTokenFile == "" && os.Getenv(workloadauth.EnvAuthMode) != workloadauth.AuthDisabled {
-		errs = append(errs, errors.New(workloadauth.EnvTokenFile+" is required to call steward-core; set "+workloadauth.EnvAuthMode+"="+workloadauth.AuthDisabled+" for local development only"))
+	if c.WorkloadTokenFile == "" && os.Getenv(workloadidentity.EnvAuthMode) != workloadidentity.AuthDisabled {
+		errs = append(errs, errors.New(workloadidentity.EnvTokenFile+" is required to call steward-core; set "+workloadidentity.EnvAuthMode+"="+workloadidentity.AuthDisabled+" for local development only"))
 	}
 	if c.DatabaseDSN == "" {
 		errs = append(errs, errors.New("DATABASE_DSN is required"))

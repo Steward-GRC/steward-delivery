@@ -33,9 +33,10 @@ import (
 	reflectionpb "google.golang.org/grpc/reflection/grpc_reflection_v1"
 	"google.golang.org/grpc/status"
 
+	workloadidentity "github.com/Bugs5382/go-workload-identity"
 	deliveryv1 "github.com/Steward-GRC/steward-delivery/gen/go/steward/delivery/v1"
+	"github.com/Steward-GRC/steward-delivery/internal/config"
 	"github.com/Steward-GRC/steward-delivery/internal/readiness"
-	"github.com/Steward-GRC/steward-delivery/internal/workloadauth"
 )
 
 const testNS = "steward"
@@ -106,15 +107,15 @@ var getDiff = deliveryv1.DeliveryService_GetDiff_FullMethodName
 func authServe(t *testing.T) (*localIssuer, *grpc.ClientConn, func()) {
 	t.Helper()
 	iss := newLocalIssuer(t)
-	v, err := workloadauth.NewVerifier(workloadauth.Config{
-		Issuer: iss.url, CAFile: iss.caFile, Audience: "steward",
+	v, err := workloadidentity.NewVerifier(config.StewardWorkload(workloadidentity.Config{
+		Issuer: iss.url, CAFile: iss.caFile,
 		AllowedServiceAccounts: []string{testNS + "/steward-gateway", testNS + "/steward-reporting"},
-	}, log.Nop())
+	}), log.Nop())
 	require.NoError(t, err)
 	require.NoError(t, v.Refresh(context.Background()))
 	conn, stop := serve(t, Options{Auth: &Auth{
 		Verifier: v,
-		Policy:   workloadauth.Policy{getDiff: {"gateway": workloadauth.OnBehalf}},
+		Policy:   workloadidentity.Policy{getDiff: {"gateway": workloadidentity.OnBehalf}},
 	}})
 	return iss, conn, stop
 }
@@ -223,7 +224,7 @@ func TestClientAuthSendsTheTokenReReadOnEveryCall(t *testing.T) {
 
 func TestClientAuthFailsClosedOnAMissingTokenFile(t *testing.T) {
 	_, err := ClientAuth(filepath.Join(t.TempDir(), "absent"))
-	require.ErrorContains(t, err, workloadauth.EnvTokenFile, "a missing mount stops the boot")
+	require.ErrorContains(t, err, workloadidentity.EnvTokenFile, "a missing mount stops the boot")
 
 	file := filepath.Join(t.TempDir(), "token")
 	require.NoError(t, os.WriteFile(file, []byte("tok"), 0o600))
@@ -233,7 +234,7 @@ func TestClientAuthFailsClosedOnAMissingTokenFile(t *testing.T) {
 	require.NoError(t, os.Remove(file))
 	_, err = deliveryv1.NewDeliveryServiceClient(conn).GetDiff(context.Background(), &deliveryv1.GetDiffRequest{})
 	require.Error(t, err, "a token that disappears fails the call instead of sending none")
-	require.ErrorContains(t, err, workloadauth.EnvTokenFile)
+	require.ErrorContains(t, err, workloadidentity.EnvTokenFile)
 	require.Empty(t, sink.seen)
 }
 
@@ -264,10 +265,10 @@ func (upCore) Version(context.Context) (string, error) { return "dev", nil }
 func TestWorkloadAuthFailsClosedWhileTheJWKSIsRefused(t *testing.T) {
 	iss := newLocalIssuer(t)
 	iss.jwksStatus.Store(http.StatusUnauthorized)
-	v, err := workloadauth.NewVerifier(workloadauth.Config{
-		Issuer: iss.url, CAFile: iss.caFile, Audience: "steward",
+	v, err := workloadidentity.NewVerifier(config.StewardWorkload(workloadidentity.Config{
+		Issuer: iss.url, CAFile: iss.caFile,
 		AllowedServiceAccounts: []string{testNS + "/steward-gateway", testNS + "/steward-pdf-renderer"},
-	}, log.Nop())
+	}), log.Nop())
 	require.NoError(t, err)
 	require.Error(t, v.Refresh(context.Background()), "a 401 from the JWKS is a failed refresh")
 
@@ -276,7 +277,7 @@ func TestWorkloadAuthFailsClosedWhileTheJWKSIsRefused(t *testing.T) {
 	require.NoError(t, err)
 	conn, stop := serve(t, Options{Checker: checker, CheckInterval: 20 * time.Millisecond, Auth: &Auth{
 		Verifier: v,
-		Policy:   workloadauth.Policy{getDiff: {"gateway": workloadauth.OnBehalf}},
+		Policy:   workloadidentity.Policy{getDiff: {"gateway": workloadidentity.OnBehalf}},
 	}})
 	defer stop()
 

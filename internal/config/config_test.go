@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Steward-GRC/steward-delivery/internal/workloadauth"
+	workloadidentity "github.com/Bugs5382/go-workload-identity"
 )
 
 func TestLoadDefaults(t *testing.T) {
@@ -180,7 +180,7 @@ func TestLoadWorkloadAuth(t *testing.T) {
 func TestLoadFailsClosedWithoutAnIssuer(t *testing.T) {
 	setWorkloadAuth(t)
 	t.Setenv("WORKLOAD_OIDC_ISSUER", "")
-	if _, err := Load(); !errors.Is(err, workloadauth.ErrNotConfigured) {
+	if _, err := Load(); !errors.Is(err, workloadidentity.ErrNotConfigured) {
 		t.Fatalf("want ErrNotConfigured, got %v", err)
 	}
 }
