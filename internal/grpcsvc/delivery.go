@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"time"
 
+	grpcactor "github.com/Bugs5382/go-grpc-actor"
 	objectstore "github.com/Bugs5382/go-objectstore"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
@@ -46,6 +47,8 @@ type PDFJobStore interface {
 	// Create inserts a pending job, before the PdfRender resource exists,
 	// so GetPDFDownloadLink always finds a row.
 	Create(ctx context.Context, jobID, policyVersionID, requesterUserID string) error
+	// Get returns the job, or store.ErrPDFJobNotFound.
+	Get(ctx context.Context, jobID string) (store.PDFJob, error)
 	// GetArtifactKey returns a done job's object key.
 	GetArtifactKey(ctx context.Context, jobID string) (string, error)
 }
@@ -223,13 +226,39 @@ func (h *DeliveryHandler) RequestPDFExport(ctx context.Context, req *deliveryv1.
 	return &deliveryv1.RequestPDFExportResponse{JobId: jobID}, nil
 }
 
-// GetPDFDownloadLink presigns a done job's PDF for a short download.
+// authorizeJobDownload lets only the user who requested a job download it. The
+// user is the actor the gateway passes on behalf of the signed-in user; a call
+// without one, another user and an unknown job all get the same not-found, so
+// a job id never reveals that the job exists or what state it is in.
+func (h *DeliveryHandler) authorizeJobDownload(ctx context.Context, jobID string) error {
+	notFound := errcodes.Error(ctx, errcodes.PDFExportNotFound(jobID))
+	a, ok := grpcactor.FromContext(ctx)
+	if !ok || a.Subject == "" {
+		return notFound
+	}
+	job, err := h.jobStore.Get(ctx, jobID)
+	switch {
+	case errors.Is(err, store.ErrPDFJobNotFound):
+		return notFound
+	case err != nil:
+		return errcodes.Error(ctx, fmt.Errorf("pdf job: %w", err))
+	case job.RequesterUserID != a.Subject:
+		return notFound
+	}
+	return nil
+}
+
+// GetPDFDownloadLink presigns a done job's PDF for a short download, for the
+// user who requested the job only.
 func (h *DeliveryHandler) GetPDFDownloadLink(ctx context.Context, req *deliveryv1.GetPDFDownloadLinkRequest) (*deliveryv1.GetPDFDownloadLinkResponse, error) {
 	if h.jobStore == nil || h.signer == nil {
 		return nil, errcodes.Error(ctx, errcodes.PDFExportDisabled())
 	}
 	if req.GetJobId() == "" {
 		return nil, errcodes.Error(ctx, errcodes.Required("job_id"))
+	}
+	if err := h.authorizeJobDownload(ctx, req.GetJobId()); err != nil {
+		return nil, err
 	}
 	key, err := h.jobStore.GetArtifactKey(ctx, req.GetJobId())
 	switch {

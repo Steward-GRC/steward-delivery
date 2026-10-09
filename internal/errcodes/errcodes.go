@@ -65,7 +65,7 @@ func Entries() []apperr.Entry {
 			Title: "PDF export", Cause: "PDF export is off, or the service has no Kubernetes API to create the render on",
 			UserSafe: true, Message: "PDF export isn't available right now."},
 		{Code: CodePDFExportNotFound, Symbol: "PDF_EXPORT_NOT_FOUND", Category: apperr.CategoryNotFound,
-			Title: "PDF export", Cause: "no PDF export job has that id",
+			Title: "PDF export", Cause: "no PDF export job has that id, or the caller did not start it",
 			UserSafe: true, Message: "That PDF export doesn't exist."},
 		{Code: CodePDFExportNotReady, Symbol: "PDF_EXPORT_NOT_READY", Category: apperr.CategoryFailedPrecondition,
 			Title: "PDF export", Cause: "the PDF is still rendering",

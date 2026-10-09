@@ -29,6 +29,7 @@ import (
 	"google.golang.org/grpc/reflection"
 	"google.golang.org/grpc/status"
 
+	grpcactor "github.com/Bugs5382/go-grpc-actor"
 	workloadidentity "github.com/Bugs5382/go-workload-identity"
 )
 
@@ -99,15 +100,17 @@ func Serve(ctx context.Context, lis net.Listener, lg log.Logger, opts Options, r
 	}
 	unary := []grpc.UnaryServerInterceptor{bi.UnaryServerInterceptor(), recoverUnary(lg)}
 	stream := []grpc.StreamServerInterceptor{bi.StreamServerInterceptor(), recoverStream(lg)}
+	actorOpts := []grpcactor.ServerOption{}
 	if a := opts.Auth; a != nil {
 		waOpts := append([]workloadidentity.Option{workloadidentity.WithExempt(reflectionServices...)}, a.Options...)
 		unary = append(unary, workloadidentity.UnaryServerInterceptor(a.Verifier, a.Policy, lg, waOpts...))
 		stream = append(stream, workloadidentity.StreamServerInterceptor(a.Verifier, a.Policy, lg, waOpts...))
+		actorOpts = append(actorOpts, grpcactor.WithTrust(TrustOnBehalf))
 	}
 	serverOpts := []grpc.ServerOption{
 		grpc.StatsHandler(gootel.GRPCServerStatsHandler()),
-		grpc.ChainUnaryInterceptor(unary...),
-		grpc.ChainStreamInterceptor(stream...),
+		grpc.ChainUnaryInterceptor(append(unary, grpcactor.UnaryServerInterceptor(actorOpts...))...),
+		grpc.ChainStreamInterceptor(append(stream, grpcactor.StreamServerInterceptor(actorOpts...))...),
 	}
 	if opts.CertFile != "" {
 		creds, err := mtls(opts)
@@ -210,6 +213,14 @@ func mtls(opts Options) (credentials.TransportCredentials, error) {
 
 // The panic value and stack go to the log only; the caller gets a bare
 // Internal.
+// TrustOnBehalf trusts the end-user actor only from a caller the workload-auth
+// interceptor verified and listed as on-behalf for the method. With workload
+// auth off nothing is trusted, so no call carries a user.
+func TrustOnBehalf(ctx context.Context, _ string) bool {
+	g, ok := workloadidentity.GrantFromContext(ctx)
+	return ok && g.Access == workloadidentity.OnBehalf
+}
+
 func recoverUnary(lg log.Logger) grpc.UnaryServerInterceptor {
 	return func(ctx context.Context, req any, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (resp any, err error) {
 		defer func() {
