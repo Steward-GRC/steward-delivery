@@ -52,7 +52,6 @@ result is reused for 5 seconds.
 | `PermissionDenied: caller not allowed on this method` | Only the gateway may call delivery's API; the `rpc.denied` audit event names the caller. |
 | `Unavailable: workload verifier unavailable` | No JWKS has loaded since start: `steward-depstate-jwks`, then the `JWKS refresh failed` log line. Every call needing a token is refused (the internal render port answers 503) and the pod stays not ready until a fetch succeeds. A `status 401` there means the API server refused `WORKLOAD_OIDC_BEARER_FILE`: it must hold a token with the API server's own audience, not the `steward` caller token. |
 | The renderer's HTML fetch gets 401 or 403 | 401: the renderer Job sent no token or a rejected one (its `WORKLOAD_TOKEN_FILE` mount, audience `steward`, and `steward/steward-pdf-renderer` in `WORKLOAD_ALLOWED_SERVICEACCOUNTS`). 403: the token belongs to another caller. |
-| The "Workload auth copy" check fails | `internal/workloadauth` was edited here or `STEWARD_CORE_REF` moved: copy the package again from steward-core at the pin. |
 | No events reach audit | `steward-depstate-rabbitmq` or `/readyz`, then the `audit` exchange and its binding to audit's queue. |
 
 ## Backups

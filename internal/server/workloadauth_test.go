@@ -35,6 +35,7 @@ import (
 
 	workloadidentity "github.com/Bugs5382/go-workload-identity"
 	deliveryv1 "github.com/Steward-GRC/steward-delivery/gen/go/steward/delivery/v1"
+	"github.com/Steward-GRC/steward-delivery/internal/config"
 	"github.com/Steward-GRC/steward-delivery/internal/readiness"
 )
 
@@ -106,10 +107,10 @@ var getDiff = deliveryv1.DeliveryService_GetDiff_FullMethodName
 func authServe(t *testing.T) (*localIssuer, *grpc.ClientConn, func()) {
 	t.Helper()
 	iss := newLocalIssuer(t)
-	v, err := workloadidentity.NewVerifier(workloadidentity.Config{
-		Issuer: iss.url, CAFile: iss.caFile, Audience: "steward",
+	v, err := workloadidentity.NewVerifier(config.StewardWorkload(workloadidentity.Config{
+		Issuer: iss.url, CAFile: iss.caFile,
 		AllowedServiceAccounts: []string{testNS + "/steward-gateway", testNS + "/steward-reporting"},
-	}, log.Nop())
+	}), log.Nop())
 	require.NoError(t, err)
 	require.NoError(t, v.Refresh(context.Background()))
 	conn, stop := serve(t, Options{Auth: &Auth{
@@ -264,10 +265,10 @@ func (upCore) Version(context.Context) (string, error) { return "dev", nil }
 func TestWorkloadAuthFailsClosedWhileTheJWKSIsRefused(t *testing.T) {
 	iss := newLocalIssuer(t)
 	iss.jwksStatus.Store(http.StatusUnauthorized)
-	v, err := workloadidentity.NewVerifier(workloadidentity.Config{
-		Issuer: iss.url, CAFile: iss.caFile, Audience: "steward",
+	v, err := workloadidentity.NewVerifier(config.StewardWorkload(workloadidentity.Config{
+		Issuer: iss.url, CAFile: iss.caFile,
 		AllowedServiceAccounts: []string{testNS + "/steward-gateway", testNS + "/steward-pdf-renderer"},
-	}, log.Nop())
+	}), log.Nop())
 	require.NoError(t, err)
 	require.Error(t, v.Refresh(context.Background()), "a 401 from the JWKS is a failed refresh")
 

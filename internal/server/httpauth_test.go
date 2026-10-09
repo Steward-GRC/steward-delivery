@@ -15,6 +15,7 @@ import (
 	"google.golang.org/grpc/codes"
 
 	workloadidentity "github.com/Bugs5382/go-workload-identity"
+	"github.com/Steward-GRC/steward-delivery/internal/config"
 )
 
 type denials struct {
@@ -34,10 +35,10 @@ func (d *denials) record(_ context.Context, x workloadidentity.Denial) {
 func httpAuthServe(t *testing.T) (*localIssuer, *httptest.Server, *denials) {
 	t.Helper()
 	iss := newLocalIssuer(t)
-	v, err := workloadidentity.NewVerifier(workloadidentity.Config{
-		Issuer: iss.url, CAFile: iss.caFile, Audience: "steward",
+	v, err := workloadidentity.NewVerifier(config.StewardWorkload(workloadidentity.Config{
+		Issuer: iss.url, CAFile: iss.caFile,
 		AllowedServiceAccounts: []string{testNS + "/steward-pdf-renderer", testNS + "/steward-gateway"},
-	}, log.Nop())
+	}), log.Nop())
 	require.NoError(t, err)
 	require.NoError(t, v.Refresh(context.Background()))
 	d := &denials{}
