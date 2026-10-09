@@ -109,6 +109,12 @@ func TestCreateMagicLinkReturnsToken(t *testing.T) {
 type stubPDFJobStore struct{ key string }
 
 func (s *stubPDFJobStore) Create(_ context.Context, _, _, _ string) error { return nil }
+func (s *stubPDFJobStore) Get(_ context.Context, jobID string) (store.PDFJob, error) {
+	if jobID == "job-001" {
+		return store.PDFJob{JobID: jobID, RequesterUserID: "bob"}, nil
+	}
+	return store.PDFJob{}, fmt.Errorf("%w: %s", store.ErrPDFJobNotFound, jobID)
+}
 func (s *stubPDFJobStore) GetArtifactKey(_ context.Context, jobID string) (string, error) {
 	if jobID == "job-001" {
 		return s.key, nil
@@ -137,7 +143,7 @@ func TestGetPDFDownloadLinkReturnedAfterJobComplete(t *testing.T) {
 		&stubSigner{url: "https://minio/signed"},
 	)
 
-	resp, err := handler.GetPDFDownloadLink(context.Background(), &deliveryv1.GetPDFDownloadLinkRequest{
+	resp, err := handler.GetPDFDownloadLink(as("bob"), &deliveryv1.GetPDFDownloadLinkRequest{
 		JobId: "job-001",
 	})
 	if err != nil {
@@ -162,7 +168,7 @@ func TestGetPDFDownloadLinkUnknownJobReturnsError(t *testing.T) {
 		&stubSigner{url: "https://minio/signed"},
 	)
 
-	_, err := handler.GetPDFDownloadLink(context.Background(), &deliveryv1.GetPDFDownloadLinkRequest{
+	_, err := handler.GetPDFDownloadLink(as("bob"), &deliveryv1.GetPDFDownloadLinkRequest{
 		JobId: "no-such-job",
 	})
 	if err == nil {
