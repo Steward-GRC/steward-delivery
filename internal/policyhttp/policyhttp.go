@@ -14,6 +14,7 @@ import (
 	"html"
 	"net/http"
 	"strings"
+	"time"
 
 	log "github.com/Bugs5382/go-log"
 
@@ -65,8 +66,23 @@ func appendHTML(bodyHTML string, appendices []AppendixRender) string {
 	return b.String()
 }
 
+// UpdatedClient says when a version last changed, for the "Last updated" line.
+type UpdatedClient interface {
+	GetUpdatedAt(ctx context.Context, policyVersionID string) (time.Time, error)
+}
+
+// updatedHTML is the "Last updated" line above the body; no line when the date
+// is unknown.
+func updatedHTML(at time.Time) string {
+	if at.IsZero() {
+		return ""
+	}
+	return `<p class="policy-updated">Last updated ` + at.UTC().Format("2 Jan 2006") + `</p>`
+}
+
 // Handler resolves PolicyVersionID to rendered HTML.
 type Handler struct {
+	updated  UpdatedClient
 	policy   PolicyClient
 	appendix AppendixClient
 	renderer *render.Renderer
@@ -87,6 +103,12 @@ func NewWithAppendix(policy PolicyClient, appendix AppendixClient, renderer *ren
 		renderer = render.New()
 	}
 	return &Handler{policy: policy, appendix: appendix, renderer: renderer, logger: log.Nop()}
+}
+
+// WithUpdated adds a "Last updated" line above the document.
+func (h *Handler) WithUpdated(c UpdatedClient) *Handler {
+	h.updated = c
+	return h
 }
 
 // WithLogger logs upstream and render failures to l.
@@ -154,6 +176,15 @@ func (h *Handler) serveHTML(w http.ResponseWriter, r *http.Request) {
 	}
 
 	out := appendHTML(bodyHTML, rendered)
+	if h.updated != nil {
+		at, err := h.updated.GetUpdatedAt(ctx, versionID)
+		if err != nil {
+			h.logger.Ctx(ctx).Error(err, "fetch updated date", log.F("version_id", versionID))
+			http.Error(w, "fetch policy failed", http.StatusBadGateway)
+			return
+		}
+		out = updatedHTML(at) + out
+	}
 
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.Header().Set("Cache-Control", "no-store")
