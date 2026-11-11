@@ -9,9 +9,9 @@ records the user ids a request names. The one check delivery makes itself is on
 | --- | --- |
 | `GetRenderedContent` | Renders a version's content to HTML (the rendering contract in `rendering.proto` and `internal/render`). |
 | `GetDiff` | Returns core's section diff between two versions. |
-| `CreateMagicLink` | Issues a link to a version: 30 days, or 48 hours for a sensitive one (configurable). |
+| `CreateMagicLink` | Issues a link to a version: 30 days, or 48 hours for a sensitive one (configurable). Sensitivity follows the version (its content flag) and its policy's classification in core; the request's `sensitive` field is ignored. A failed classification read refuses the call. |
 | `RevokeMagicLink` | Ends a link at once; revoking twice succeeds. |
-| `ResolveMagicLink` | Returns the version a live link opens. A sensitive link needs `viewer_email` and always requires the watermark. Expired, revoked and unknown links each have their own code. |
+| `ResolveMagicLink` | Returns the version a live link opens. A sensitive link needs `viewer_email` and always requires the watermark; a link made before its policy was classified sensitive is treated as sensitive too. Expired, revoked and unknown links each have their own code. |
 | `RequestPDFExport` | Records a pending job and creates its [`PdfRender`](pdf-render.md); returns the job id. `PDF_EXPORT_DISABLED` while export is off. |
 | `GetPDFDownloadLink` | A presigned download URL for a done job (15 minutes by default), for the user who requested it only. `PDF_EXPORT_NOT_READY` while it renders, `PDF_EXPORT_FAILED` if the renderer failed. |
 
