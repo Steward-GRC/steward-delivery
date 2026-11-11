@@ -169,3 +169,37 @@ func (r *PDFJobRepo) GetArtifactKey(ctx context.Context, jobID string) (string, 
 	}
 	return *key, nil
 }
+
+// SetJobHistory keeps the version-history entries (JSON) an export asked to
+// print. A job with no stored history did not ask for the page.
+func (r *PDFJobRepo) SetJobHistory(ctx context.Context, jobID string, history []byte) error {
+	tag, err := r.db.Querier().Exec(ctx, `
+		UPDATE pdf_jobs SET history = $1::jsonb WHERE job_id = $2`, history, jobID)
+	if err != nil {
+		return fmt.Errorf("PDFJobRepo.SetJobHistory: %w", err)
+	}
+	if tag.RowsAffected() == 0 {
+		return fmt.Errorf("%w: %s", ErrPDFJobNotFound, jobID)
+	}
+	return nil
+}
+
+// GetJobHistory returns the job's version id and its stored history, which is
+// nil when the export did not ask for the page. An unknown job is
+// ErrPDFJobNotFound.
+func (r *PDFJobRepo) GetJobHistory(ctx context.Context, jobID string) (string, []byte, error) {
+	var (
+		versionID string
+		history   []byte
+	)
+	err := r.db.Querier().QueryRow(ctx, `
+		SELECT policy_version_id, history FROM pdf_jobs WHERE job_id = $1`, jobID).
+		Scan(&versionID, &history)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return "", nil, fmt.Errorf("%w: %s", ErrPDFJobNotFound, jobID)
+		}
+		return "", nil, fmt.Errorf("PDFJobRepo.GetJobHistory: %w", err)
+	}
+	return versionID, history, nil
+}

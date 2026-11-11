@@ -183,6 +183,7 @@ func run(ctx context.Context, logger log.Logger) error {
 	handler := grpcsvc.NewDeliveryHandlerFull(policyClient, mlSvc, pdfClient,
 		grpcsvc.PDFConfig{FetchURLBase: cfg.InternalBaseURL, OutputBucket: cfg.S3Bucket}, jobStore, signer).
 		WithSensitivity(corepolicy.NewSensitivity(policyService)).
+		WithHistoryStore(jobStore).
 		WithPDFLinkTTL(cfg.PDFLinkTTL)
 
 	var auth *server.Auth

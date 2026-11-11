@@ -53,6 +53,16 @@ type PDFJobStore interface {
 	GetArtifactKey(ctx context.Context, jobID string) (string, error)
 }
 
+// HistoryStore keeps the version-history entries an export asked to print;
+// store.PDFJobRepo implements it.
+type HistoryStore interface {
+	// SetJobHistory stores history (JSON) on an existing job.
+	SetJobHistory(ctx context.Context, jobID string, history []byte) error
+}
+
+// maxHistoryEntries is the most entries one export prints.
+const maxHistoryEntries = 500
+
 // PDFRenderClient creates PdfRender resources; pdfrender.Client implements it.
 type PDFRenderClient interface {
 	Create(ctx context.Context, name string, spec pdfrender.Spec) error
@@ -94,6 +104,7 @@ type DeliveryHandler struct {
 	pdfClient   PDFRenderClient // nil while PDF export is off
 	pdfCfg      PDFConfig
 	jobStore    PDFJobStore
+	history     HistoryStore // nil: an export cannot print a history page
 	signer      Signer
 	pdfLinkTTL  time.Duration
 }
@@ -123,6 +134,13 @@ func NewDeliveryHandlerFull(policy PolicyClient, mlSvc *magiclink.Service, pdfCl
 // deciding the export watermark.
 func (h *DeliveryHandler) WithSensitivity(s SensitivityLookup) *DeliveryHandler {
 	h.sensitivity = s
+	return h
+}
+
+// WithHistoryStore lets an export print a version-history page, keeping the
+// entries the request carries.
+func (h *DeliveryHandler) WithHistoryStore(s HistoryStore) *DeliveryHandler {
+	h.history = s
 	return h
 }
 
@@ -182,6 +200,25 @@ func (h *DeliveryHandler) RequestPDFExport(ctx context.Context, req *deliveryv1.
 		return nil, errcodes.Error(ctx, errcodes.PDFExportDisabled())
 	}
 	versionID := req.GetPolicyVersionId()
+	var historyJSON []byte
+	if req.GetIncludeHistory() {
+		if h.history == nil {
+			return nil, errcodes.Error(ctx, errcodes.PDFExportDisabled())
+		}
+		if len(req.GetHistory()) > maxHistoryEntries {
+			return nil, errcodes.Error(ctx, errcodes.Invalid("history", fmt.Sprintf("at most %d entries", maxHistoryEntries)))
+		}
+		entries := make([]policyhttp.HistoryEntry, 0, len(req.GetHistory()))
+		for _, e := range req.GetHistory() {
+			entries = append(entries, policyhttp.HistoryEntry{
+				At: e.GetOccurredAt().AsTime(), Version: e.GetVersionNumber(), Label: e.GetLabel(), Actor: e.GetActorName(),
+			})
+		}
+		var err error
+		if historyJSON, err = policyhttp.MarshalHistory(entries); err != nil {
+			return nil, errcodes.Error(ctx, fmt.Errorf("encode history: %w", err))
+		}
+	}
 	raw, err := h.content(ctx, versionID)
 	if err != nil {
 		return nil, errcodes.Error(ctx, err)
@@ -212,9 +249,17 @@ func (h *DeliveryHandler) RequestPDFExport(ctx context.Context, req *deliveryv1.
 			return nil, errcodes.Error(ctx, errcodes.StoreUnavailable("create_pdf_job", err))
 		}
 	}
+	fetchURL := h.pdfCfg.FetchURLBase + "/internal/policies/" + versionID + "/html"
+	if historyJSON != nil {
+		if err := h.history.SetJobHistory(ctx, jobID, historyJSON); err != nil {
+			return nil, errcodes.Error(ctx, errcodes.StoreUnavailable("save_pdf_history", err))
+		}
+		// The render fetches the job's own history by this id.
+		fetchURL += "?job=" + jobID
+	}
 	spec := pdfrender.Spec{
 		PolicyVersionID: versionID,
-		FetchURL:        h.pdfCfg.FetchURLBase + "/internal/policies/" + versionID + "/html",
+		FetchURL:        fetchURL,
 		OutputBucket:    h.pdfCfg.OutputBucket,
 		OutputKey:       outputKey,
 		Sensitivity:     sensitivity,

@@ -85,6 +85,7 @@ type Handler struct {
 	updated  UpdatedClient
 	policy   PolicyClient
 	appendix AppendixClient
+	history  HistoryClient
 	renderer *render.Renderer
 	logger   log.Logger
 }
@@ -108,6 +109,13 @@ func NewWithAppendix(policy PolicyClient, appendix AppendixClient, renderer *ren
 // WithUpdated adds a "Last updated" line above the document.
 func (h *Handler) WithUpdated(c UpdatedClient) *Handler {
 	h.updated = c
+	return h
+}
+
+// WithHistory adds the version-history page to a render whose fetch URL names
+// a job that asked for it (?job=<id>).
+func (h *Handler) WithHistory(c HistoryClient) *Handler {
+	h.history = c
 	return h
 }
 
@@ -176,6 +184,23 @@ func (h *Handler) serveHTML(w http.ResponseWriter, r *http.Request) {
 	}
 
 	out := appendHTML(bodyHTML, rendered)
+	if jobID := strings.TrimSpace(r.URL.Query().Get("job")); jobID != "" && h.history != nil {
+		entries, requested, err := h.history.JobHistory(ctx, jobID, versionID)
+		if isNotFound(err) {
+			http.Error(w, "job not found for this version", http.StatusNotFound)
+			return
+		}
+		if err != nil {
+			h.logger.Ctx(ctx).Error(err, "fetch history", log.F("version_id", versionID), log.F("job_id", jobID))
+			http.Error(w, "fetch history failed", http.StatusBadGateway)
+			return
+		}
+		h.logger.Ctx(ctx).Debug("history page", log.F("version_id", versionID), log.F("job_id", jobID),
+			log.F("requested", requested), log.F("entries", len(entries)))
+		if requested {
+			out += historyHTML(entries)
+		}
+	}
 	if h.updated != nil {
 		at, err := h.updated.GetUpdatedAt(ctx, versionID)
 		if err != nil {

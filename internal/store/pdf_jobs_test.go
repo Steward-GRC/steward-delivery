@@ -6,6 +6,7 @@ package store_test
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 
 	"github.com/Steward-GRC/steward-delivery/internal/store"
@@ -210,5 +211,44 @@ func TestPDFJobGetArtifactKeyTellsFailedFromPending(t *testing.T) {
 	_, err = repo.GetArtifactKey(ctx, "job-failed-2")
 	if !errors.Is(err, store.ErrPDFJobFailed) {
 		t.Errorf("failed job: got %v, want ErrPDFJobFailed", err)
+	}
+}
+
+func TestPDFJobHistoryIsNilUntilAnExportAsksForIt(t *testing.T) {
+	pool := newTestDB(t)
+	repo := store.NewPDFJobRepo(pool)
+	ctx := context.Background()
+	if err := repo.Create(ctx, "job-h1", "pv-1", "user-1"); err != nil {
+		t.Fatal(err)
+	}
+
+	version, history, err := repo.GetJobHistory(ctx, "job-h1")
+	if err != nil || version != "pv-1" || history != nil {
+		t.Fatalf("before: %q %q %v", version, history, err)
+	}
+	if err := repo.SetJobHistory(ctx, "job-h1", []byte(`[]`)); err != nil {
+		t.Fatal(err)
+	}
+	if _, history, err = repo.GetJobHistory(ctx, "job-h1"); err != nil || string(history) != "[]" {
+		t.Fatalf("empty list: %q %v", history, err)
+	}
+	want := `[{"at":"2026-03-02T09:30:00Z","version":2,"label":"Approved","actor":"Lee Park"}]`
+	if err := repo.SetJobHistory(ctx, "job-h1", []byte(want)); err != nil {
+		t.Fatal(err)
+	}
+	_, history, err = repo.GetJobHistory(ctx, "job-h1")
+	if err != nil || !strings.Contains(string(history), `"label": "Approved"`) && !strings.Contains(string(history), `"label":"Approved"`) {
+		t.Fatalf("stored: %q %v", history, err)
+	}
+}
+
+func TestPDFJobHistoryOfAnUnknownJobIsNotFound(t *testing.T) {
+	repo := store.NewPDFJobRepo(newTestDB(t))
+	ctx := context.Background()
+	if _, _, err := repo.GetJobHistory(ctx, "nope"); !errors.Is(err, store.ErrPDFJobNotFound) {
+		t.Errorf("get: %v", err)
+	}
+	if err := repo.SetJobHistory(ctx, "nope", []byte(`[]`)); !errors.Is(err, store.ErrPDFJobNotFound) {
+		t.Errorf("set: %v", err)
 	}
 }

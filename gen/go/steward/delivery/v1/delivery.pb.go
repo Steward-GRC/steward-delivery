@@ -285,8 +285,16 @@ type RequestPDFExportRequest struct {
 	state           protoimpl.MessageState `protogen:"open.v1"`
 	PolicyVersionId string                 `protobuf:"bytes,1,opt,name=policy_version_id,json=policyVersionId,proto3" json:"policy_version_id,omitempty"`
 	RequesterUserId string                 `protobuf:"bytes,2,opt,name=requester_user_id,json=requesterUserId,proto3" json:"requester_user_id,omitempty"`
-	unknownFields   protoimpl.UnknownFields
-	sizeCache       protoimpl.SizeCache
+	// True asks for a version-history page after the policy. Delivery has no
+	// history source of its own: the gateway sends the events in history,
+	// already checked against what the requester may see and with names
+	// resolved. True with no events prints a page that says none are recorded.
+	IncludeHistory bool `protobuf:"varint,3,opt,name=include_history,json=includeHistory,proto3" json:"include_history,omitempty"`
+	// The events of the version, in the order to print them. Ignored unless
+	// include_history is true; at most 500.
+	History       []*VersionHistoryEntry `protobuf:"bytes,4,rep,name=history,proto3" json:"history,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *RequestPDFExportRequest) Reset() {
@@ -333,6 +341,93 @@ func (x *RequestPDFExportRequest) GetRequesterUserId() string {
 	return ""
 }
 
+func (x *RequestPDFExportRequest) GetIncludeHistory() bool {
+	if x != nil {
+		return x.IncludeHistory
+	}
+	return false
+}
+
+func (x *RequestPDFExportRequest) GetHistory() []*VersionHistoryEntry {
+	if x != nil {
+		return x.History
+	}
+	return nil
+}
+
+// VersionHistoryEntry is one line of the version-history page: who did what
+// to which version, and when.
+type VersionHistoryEntry struct {
+	state      protoimpl.MessageState `protogen:"open.v1"`
+	OccurredAt *timestamppb.Timestamp `protobuf:"bytes,1,opt,name=occurred_at,json=occurredAt,proto3" json:"occurred_at,omitempty"`
+	// The number of the policy version the event is about; 0 when none.
+	VersionNumber int32 `protobuf:"varint,2,opt,name=version_number,json=versionNumber,proto3" json:"version_number,omitempty"`
+	// What happened, in words ("Submitted for review", "Approved").
+	Label string `protobuf:"bytes,3,opt,name=label,proto3" json:"label,omitempty"`
+	// Who did it, by display name; empty for a system event.
+	ActorName     string `protobuf:"bytes,4,opt,name=actor_name,json=actorName,proto3" json:"actor_name,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *VersionHistoryEntry) Reset() {
+	*x = VersionHistoryEntry{}
+	mi := &file_steward_delivery_v1_delivery_proto_msgTypes[6]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *VersionHistoryEntry) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*VersionHistoryEntry) ProtoMessage() {}
+
+func (x *VersionHistoryEntry) ProtoReflect() protoreflect.Message {
+	mi := &file_steward_delivery_v1_delivery_proto_msgTypes[6]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use VersionHistoryEntry.ProtoReflect.Descriptor instead.
+func (*VersionHistoryEntry) Descriptor() ([]byte, []int) {
+	return file_steward_delivery_v1_delivery_proto_rawDescGZIP(), []int{6}
+}
+
+func (x *VersionHistoryEntry) GetOccurredAt() *timestamppb.Timestamp {
+	if x != nil {
+		return x.OccurredAt
+	}
+	return nil
+}
+
+func (x *VersionHistoryEntry) GetVersionNumber() int32 {
+	if x != nil {
+		return x.VersionNumber
+	}
+	return 0
+}
+
+func (x *VersionHistoryEntry) GetLabel() string {
+	if x != nil {
+		return x.Label
+	}
+	return ""
+}
+
+func (x *VersionHistoryEntry) GetActorName() string {
+	if x != nil {
+		return x.ActorName
+	}
+	return ""
+}
+
 type RequestPDFExportResponse struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	JobId         string                 `protobuf:"bytes,1,opt,name=job_id,json=jobId,proto3" json:"job_id,omitempty"`
@@ -342,7 +437,7 @@ type RequestPDFExportResponse struct {
 
 func (x *RequestPDFExportResponse) Reset() {
 	*x = RequestPDFExportResponse{}
-	mi := &file_steward_delivery_v1_delivery_proto_msgTypes[6]
+	mi := &file_steward_delivery_v1_delivery_proto_msgTypes[7]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -354,7 +449,7 @@ func (x *RequestPDFExportResponse) String() string {
 func (*RequestPDFExportResponse) ProtoMessage() {}
 
 func (x *RequestPDFExportResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_steward_delivery_v1_delivery_proto_msgTypes[6]
+	mi := &file_steward_delivery_v1_delivery_proto_msgTypes[7]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -367,7 +462,7 @@ func (x *RequestPDFExportResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RequestPDFExportResponse.ProtoReflect.Descriptor instead.
 func (*RequestPDFExportResponse) Descriptor() ([]byte, []int) {
-	return file_steward_delivery_v1_delivery_proto_rawDescGZIP(), []int{6}
+	return file_steward_delivery_v1_delivery_proto_rawDescGZIP(), []int{7}
 }
 
 func (x *RequestPDFExportResponse) GetJobId() string {
@@ -386,7 +481,7 @@ type GetPDFDownloadLinkRequest struct {
 
 func (x *GetPDFDownloadLinkRequest) Reset() {
 	*x = GetPDFDownloadLinkRequest{}
-	mi := &file_steward_delivery_v1_delivery_proto_msgTypes[7]
+	mi := &file_steward_delivery_v1_delivery_proto_msgTypes[8]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -398,7 +493,7 @@ func (x *GetPDFDownloadLinkRequest) String() string {
 func (*GetPDFDownloadLinkRequest) ProtoMessage() {}
 
 func (x *GetPDFDownloadLinkRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_steward_delivery_v1_delivery_proto_msgTypes[7]
+	mi := &file_steward_delivery_v1_delivery_proto_msgTypes[8]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -411,7 +506,7 @@ func (x *GetPDFDownloadLinkRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetPDFDownloadLinkRequest.ProtoReflect.Descriptor instead.
 func (*GetPDFDownloadLinkRequest) Descriptor() ([]byte, []int) {
-	return file_steward_delivery_v1_delivery_proto_rawDescGZIP(), []int{7}
+	return file_steward_delivery_v1_delivery_proto_rawDescGZIP(), []int{8}
 }
 
 func (x *GetPDFDownloadLinkRequest) GetJobId() string {
@@ -431,7 +526,7 @@ type GetPDFDownloadLinkResponse struct {
 
 func (x *GetPDFDownloadLinkResponse) Reset() {
 	*x = GetPDFDownloadLinkResponse{}
-	mi := &file_steward_delivery_v1_delivery_proto_msgTypes[8]
+	mi := &file_steward_delivery_v1_delivery_proto_msgTypes[9]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -443,7 +538,7 @@ func (x *GetPDFDownloadLinkResponse) String() string {
 func (*GetPDFDownloadLinkResponse) ProtoMessage() {}
 
 func (x *GetPDFDownloadLinkResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_steward_delivery_v1_delivery_proto_msgTypes[8]
+	mi := &file_steward_delivery_v1_delivery_proto_msgTypes[9]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -456,7 +551,7 @@ func (x *GetPDFDownloadLinkResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetPDFDownloadLinkResponse.ProtoReflect.Descriptor instead.
 func (*GetPDFDownloadLinkResponse) Descriptor() ([]byte, []int) {
-	return file_steward_delivery_v1_delivery_proto_rawDescGZIP(), []int{8}
+	return file_steward_delivery_v1_delivery_proto_rawDescGZIP(), []int{9}
 }
 
 func (x *GetPDFDownloadLinkResponse) GetSignedUrl() string {
@@ -486,7 +581,7 @@ type CreateMagicLinkRequest struct {
 
 func (x *CreateMagicLinkRequest) Reset() {
 	*x = CreateMagicLinkRequest{}
-	mi := &file_steward_delivery_v1_delivery_proto_msgTypes[9]
+	mi := &file_steward_delivery_v1_delivery_proto_msgTypes[10]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -498,7 +593,7 @@ func (x *CreateMagicLinkRequest) String() string {
 func (*CreateMagicLinkRequest) ProtoMessage() {}
 
 func (x *CreateMagicLinkRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_steward_delivery_v1_delivery_proto_msgTypes[9]
+	mi := &file_steward_delivery_v1_delivery_proto_msgTypes[10]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -511,7 +606,7 @@ func (x *CreateMagicLinkRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CreateMagicLinkRequest.ProtoReflect.Descriptor instead.
 func (*CreateMagicLinkRequest) Descriptor() ([]byte, []int) {
-	return file_steward_delivery_v1_delivery_proto_rawDescGZIP(), []int{9}
+	return file_steward_delivery_v1_delivery_proto_rawDescGZIP(), []int{10}
 }
 
 func (x *CreateMagicLinkRequest) GetPolicyVersionId() string {
@@ -545,7 +640,7 @@ type CreateMagicLinkResponse struct {
 
 func (x *CreateMagicLinkResponse) Reset() {
 	*x = CreateMagicLinkResponse{}
-	mi := &file_steward_delivery_v1_delivery_proto_msgTypes[10]
+	mi := &file_steward_delivery_v1_delivery_proto_msgTypes[11]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -557,7 +652,7 @@ func (x *CreateMagicLinkResponse) String() string {
 func (*CreateMagicLinkResponse) ProtoMessage() {}
 
 func (x *CreateMagicLinkResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_steward_delivery_v1_delivery_proto_msgTypes[10]
+	mi := &file_steward_delivery_v1_delivery_proto_msgTypes[11]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -570,7 +665,7 @@ func (x *CreateMagicLinkResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CreateMagicLinkResponse.ProtoReflect.Descriptor instead.
 func (*CreateMagicLinkResponse) Descriptor() ([]byte, []int) {
-	return file_steward_delivery_v1_delivery_proto_rawDescGZIP(), []int{10}
+	return file_steward_delivery_v1_delivery_proto_rawDescGZIP(), []int{11}
 }
 
 func (x *CreateMagicLinkResponse) GetToken() string {
@@ -597,7 +692,7 @@ type RevokeMagicLinkRequest struct {
 
 func (x *RevokeMagicLinkRequest) Reset() {
 	*x = RevokeMagicLinkRequest{}
-	mi := &file_steward_delivery_v1_delivery_proto_msgTypes[11]
+	mi := &file_steward_delivery_v1_delivery_proto_msgTypes[12]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -609,7 +704,7 @@ func (x *RevokeMagicLinkRequest) String() string {
 func (*RevokeMagicLinkRequest) ProtoMessage() {}
 
 func (x *RevokeMagicLinkRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_steward_delivery_v1_delivery_proto_msgTypes[11]
+	mi := &file_steward_delivery_v1_delivery_proto_msgTypes[12]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -622,7 +717,7 @@ func (x *RevokeMagicLinkRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RevokeMagicLinkRequest.ProtoReflect.Descriptor instead.
 func (*RevokeMagicLinkRequest) Descriptor() ([]byte, []int) {
-	return file_steward_delivery_v1_delivery_proto_rawDescGZIP(), []int{11}
+	return file_steward_delivery_v1_delivery_proto_rawDescGZIP(), []int{12}
 }
 
 func (x *RevokeMagicLinkRequest) GetToken() string {
@@ -648,7 +743,7 @@ type RevokeMagicLinkResponse struct {
 
 func (x *RevokeMagicLinkResponse) Reset() {
 	*x = RevokeMagicLinkResponse{}
-	mi := &file_steward_delivery_v1_delivery_proto_msgTypes[12]
+	mi := &file_steward_delivery_v1_delivery_proto_msgTypes[13]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -660,7 +755,7 @@ func (x *RevokeMagicLinkResponse) String() string {
 func (*RevokeMagicLinkResponse) ProtoMessage() {}
 
 func (x *RevokeMagicLinkResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_steward_delivery_v1_delivery_proto_msgTypes[12]
+	mi := &file_steward_delivery_v1_delivery_proto_msgTypes[13]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -673,7 +768,7 @@ func (x *RevokeMagicLinkResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RevokeMagicLinkResponse.ProtoReflect.Descriptor instead.
 func (*RevokeMagicLinkResponse) Descriptor() ([]byte, []int) {
-	return file_steward_delivery_v1_delivery_proto_rawDescGZIP(), []int{12}
+	return file_steward_delivery_v1_delivery_proto_rawDescGZIP(), []int{13}
 }
 
 func (x *RevokeMagicLinkResponse) GetRevoked() bool {
@@ -694,7 +789,7 @@ type ResolveMagicLinkRequest struct {
 
 func (x *ResolveMagicLinkRequest) Reset() {
 	*x = ResolveMagicLinkRequest{}
-	mi := &file_steward_delivery_v1_delivery_proto_msgTypes[13]
+	mi := &file_steward_delivery_v1_delivery_proto_msgTypes[14]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -706,7 +801,7 @@ func (x *ResolveMagicLinkRequest) String() string {
 func (*ResolveMagicLinkRequest) ProtoMessage() {}
 
 func (x *ResolveMagicLinkRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_steward_delivery_v1_delivery_proto_msgTypes[13]
+	mi := &file_steward_delivery_v1_delivery_proto_msgTypes[14]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -719,7 +814,7 @@ func (x *ResolveMagicLinkRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ResolveMagicLinkRequest.ProtoReflect.Descriptor instead.
 func (*ResolveMagicLinkRequest) Descriptor() ([]byte, []int) {
-	return file_steward_delivery_v1_delivery_proto_rawDescGZIP(), []int{13}
+	return file_steward_delivery_v1_delivery_proto_rawDescGZIP(), []int{14}
 }
 
 func (x *ResolveMagicLinkRequest) GetToken() string {
@@ -747,7 +842,7 @@ type ResolveMagicLinkResponse struct {
 
 func (x *ResolveMagicLinkResponse) Reset() {
 	*x = ResolveMagicLinkResponse{}
-	mi := &file_steward_delivery_v1_delivery_proto_msgTypes[14]
+	mi := &file_steward_delivery_v1_delivery_proto_msgTypes[15]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -759,7 +854,7 @@ func (x *ResolveMagicLinkResponse) String() string {
 func (*ResolveMagicLinkResponse) ProtoMessage() {}
 
 func (x *ResolveMagicLinkResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_steward_delivery_v1_delivery_proto_msgTypes[14]
+	mi := &file_steward_delivery_v1_delivery_proto_msgTypes[15]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -772,7 +867,7 @@ func (x *ResolveMagicLinkResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ResolveMagicLinkResponse.ProtoReflect.Descriptor instead.
 func (*ResolveMagicLinkResponse) Descriptor() ([]byte, []int) {
-	return file_steward_delivery_v1_delivery_proto_rawDescGZIP(), []int{14}
+	return file_steward_delivery_v1_delivery_proto_rawDescGZIP(), []int{15}
 }
 
 func (x *ResolveMagicLinkResponse) GetPolicyVersionId() string {
@@ -816,10 +911,19 @@ const file_steward_delivery_v1_delivery_proto_rawDesc = "" +
 	"\vchange_type\x18\x02 \x01(\tR\n" +
 	"changeType\x12\x1b\n" +
 	"\tdiff_html\x18\x03 \x01(\tR\bdiffHtml\x12 \n" +
-	"\vboilerplate\x18\x04 \x01(\bR\vboilerplate\"q\n" +
+	"\vboilerplate\x18\x04 \x01(\bR\vboilerplate\"\xde\x01\n" +
 	"\x17RequestPDFExportRequest\x12*\n" +
 	"\x11policy_version_id\x18\x01 \x01(\tR\x0fpolicyVersionId\x12*\n" +
-	"\x11requester_user_id\x18\x02 \x01(\tR\x0frequesterUserId\"1\n" +
+	"\x11requester_user_id\x18\x02 \x01(\tR\x0frequesterUserId\x12'\n" +
+	"\x0finclude_history\x18\x03 \x01(\bR\x0eincludeHistory\x12B\n" +
+	"\ahistory\x18\x04 \x03(\v2(.steward.delivery.v1.VersionHistoryEntryR\ahistory\"\xae\x01\n" +
+	"\x13VersionHistoryEntry\x12;\n" +
+	"\voccurred_at\x18\x01 \x01(\v2\x1a.google.protobuf.TimestampR\n" +
+	"occurredAt\x12%\n" +
+	"\x0eversion_number\x18\x02 \x01(\x05R\rversionNumber\x12\x14\n" +
+	"\x05label\x18\x03 \x01(\tR\x05label\x12\x1d\n" +
+	"\n" +
+	"actor_name\x18\x04 \x01(\tR\tactorName\"1\n" +
 	"\x18RequestPDFExportResponse\x12\x15\n" +
 	"\x06job_id\x18\x01 \x01(\tR\x05jobId\"2\n" +
 	"\x19GetPDFDownloadLinkRequest\x12\x15\n" +
@@ -870,7 +974,7 @@ func file_steward_delivery_v1_delivery_proto_rawDescGZIP() []byte {
 	return file_steward_delivery_v1_delivery_proto_rawDescData
 }
 
-var file_steward_delivery_v1_delivery_proto_msgTypes = make([]protoimpl.MessageInfo, 15)
+var file_steward_delivery_v1_delivery_proto_msgTypes = make([]protoimpl.MessageInfo, 16)
 var file_steward_delivery_v1_delivery_proto_goTypes = []any{
 	(*GetRenderedContentRequest)(nil),  // 0: steward.delivery.v1.GetRenderedContentRequest
 	(*GetRenderedContentResponse)(nil), // 1: steward.delivery.v1.GetRenderedContentResponse
@@ -878,40 +982,43 @@ var file_steward_delivery_v1_delivery_proto_goTypes = []any{
 	(*GetDiffResponse)(nil),            // 3: steward.delivery.v1.GetDiffResponse
 	(*SectionDiff)(nil),                // 4: steward.delivery.v1.SectionDiff
 	(*RequestPDFExportRequest)(nil),    // 5: steward.delivery.v1.RequestPDFExportRequest
-	(*RequestPDFExportResponse)(nil),   // 6: steward.delivery.v1.RequestPDFExportResponse
-	(*GetPDFDownloadLinkRequest)(nil),  // 7: steward.delivery.v1.GetPDFDownloadLinkRequest
-	(*GetPDFDownloadLinkResponse)(nil), // 8: steward.delivery.v1.GetPDFDownloadLinkResponse
-	(*CreateMagicLinkRequest)(nil),     // 9: steward.delivery.v1.CreateMagicLinkRequest
-	(*CreateMagicLinkResponse)(nil),    // 10: steward.delivery.v1.CreateMagicLinkResponse
-	(*RevokeMagicLinkRequest)(nil),     // 11: steward.delivery.v1.RevokeMagicLinkRequest
-	(*RevokeMagicLinkResponse)(nil),    // 12: steward.delivery.v1.RevokeMagicLinkResponse
-	(*ResolveMagicLinkRequest)(nil),    // 13: steward.delivery.v1.ResolveMagicLinkRequest
-	(*ResolveMagicLinkResponse)(nil),   // 14: steward.delivery.v1.ResolveMagicLinkResponse
-	(*timestamppb.Timestamp)(nil),      // 15: google.protobuf.Timestamp
+	(*VersionHistoryEntry)(nil),        // 6: steward.delivery.v1.VersionHistoryEntry
+	(*RequestPDFExportResponse)(nil),   // 7: steward.delivery.v1.RequestPDFExportResponse
+	(*GetPDFDownloadLinkRequest)(nil),  // 8: steward.delivery.v1.GetPDFDownloadLinkRequest
+	(*GetPDFDownloadLinkResponse)(nil), // 9: steward.delivery.v1.GetPDFDownloadLinkResponse
+	(*CreateMagicLinkRequest)(nil),     // 10: steward.delivery.v1.CreateMagicLinkRequest
+	(*CreateMagicLinkResponse)(nil),    // 11: steward.delivery.v1.CreateMagicLinkResponse
+	(*RevokeMagicLinkRequest)(nil),     // 12: steward.delivery.v1.RevokeMagicLinkRequest
+	(*RevokeMagicLinkResponse)(nil),    // 13: steward.delivery.v1.RevokeMagicLinkResponse
+	(*ResolveMagicLinkRequest)(nil),    // 14: steward.delivery.v1.ResolveMagicLinkRequest
+	(*ResolveMagicLinkResponse)(nil),   // 15: steward.delivery.v1.ResolveMagicLinkResponse
+	(*timestamppb.Timestamp)(nil),      // 16: google.protobuf.Timestamp
 }
 var file_steward_delivery_v1_delivery_proto_depIdxs = []int32{
 	4,  // 0: steward.delivery.v1.GetDiffResponse.sections:type_name -> steward.delivery.v1.SectionDiff
-	15, // 1: steward.delivery.v1.GetPDFDownloadLinkResponse.expires_at:type_name -> google.protobuf.Timestamp
-	15, // 2: steward.delivery.v1.CreateMagicLinkResponse.expires_at:type_name -> google.protobuf.Timestamp
-	0,  // 3: steward.delivery.v1.DeliveryService.GetRenderedContent:input_type -> steward.delivery.v1.GetRenderedContentRequest
-	2,  // 4: steward.delivery.v1.DeliveryService.GetDiff:input_type -> steward.delivery.v1.GetDiffRequest
-	5,  // 5: steward.delivery.v1.DeliveryService.RequestPDFExport:input_type -> steward.delivery.v1.RequestPDFExportRequest
-	7,  // 6: steward.delivery.v1.DeliveryService.GetPDFDownloadLink:input_type -> steward.delivery.v1.GetPDFDownloadLinkRequest
-	9,  // 7: steward.delivery.v1.DeliveryService.CreateMagicLink:input_type -> steward.delivery.v1.CreateMagicLinkRequest
-	11, // 8: steward.delivery.v1.DeliveryService.RevokeMagicLink:input_type -> steward.delivery.v1.RevokeMagicLinkRequest
-	13, // 9: steward.delivery.v1.DeliveryService.ResolveMagicLink:input_type -> steward.delivery.v1.ResolveMagicLinkRequest
-	1,  // 10: steward.delivery.v1.DeliveryService.GetRenderedContent:output_type -> steward.delivery.v1.GetRenderedContentResponse
-	3,  // 11: steward.delivery.v1.DeliveryService.GetDiff:output_type -> steward.delivery.v1.GetDiffResponse
-	6,  // 12: steward.delivery.v1.DeliveryService.RequestPDFExport:output_type -> steward.delivery.v1.RequestPDFExportResponse
-	8,  // 13: steward.delivery.v1.DeliveryService.GetPDFDownloadLink:output_type -> steward.delivery.v1.GetPDFDownloadLinkResponse
-	10, // 14: steward.delivery.v1.DeliveryService.CreateMagicLink:output_type -> steward.delivery.v1.CreateMagicLinkResponse
-	12, // 15: steward.delivery.v1.DeliveryService.RevokeMagicLink:output_type -> steward.delivery.v1.RevokeMagicLinkResponse
-	14, // 16: steward.delivery.v1.DeliveryService.ResolveMagicLink:output_type -> steward.delivery.v1.ResolveMagicLinkResponse
-	10, // [10:17] is the sub-list for method output_type
-	3,  // [3:10] is the sub-list for method input_type
-	3,  // [3:3] is the sub-list for extension type_name
-	3,  // [3:3] is the sub-list for extension extendee
-	0,  // [0:3] is the sub-list for field type_name
+	6,  // 1: steward.delivery.v1.RequestPDFExportRequest.history:type_name -> steward.delivery.v1.VersionHistoryEntry
+	16, // 2: steward.delivery.v1.VersionHistoryEntry.occurred_at:type_name -> google.protobuf.Timestamp
+	16, // 3: steward.delivery.v1.GetPDFDownloadLinkResponse.expires_at:type_name -> google.protobuf.Timestamp
+	16, // 4: steward.delivery.v1.CreateMagicLinkResponse.expires_at:type_name -> google.protobuf.Timestamp
+	0,  // 5: steward.delivery.v1.DeliveryService.GetRenderedContent:input_type -> steward.delivery.v1.GetRenderedContentRequest
+	2,  // 6: steward.delivery.v1.DeliveryService.GetDiff:input_type -> steward.delivery.v1.GetDiffRequest
+	5,  // 7: steward.delivery.v1.DeliveryService.RequestPDFExport:input_type -> steward.delivery.v1.RequestPDFExportRequest
+	8,  // 8: steward.delivery.v1.DeliveryService.GetPDFDownloadLink:input_type -> steward.delivery.v1.GetPDFDownloadLinkRequest
+	10, // 9: steward.delivery.v1.DeliveryService.CreateMagicLink:input_type -> steward.delivery.v1.CreateMagicLinkRequest
+	12, // 10: steward.delivery.v1.DeliveryService.RevokeMagicLink:input_type -> steward.delivery.v1.RevokeMagicLinkRequest
+	14, // 11: steward.delivery.v1.DeliveryService.ResolveMagicLink:input_type -> steward.delivery.v1.ResolveMagicLinkRequest
+	1,  // 12: steward.delivery.v1.DeliveryService.GetRenderedContent:output_type -> steward.delivery.v1.GetRenderedContentResponse
+	3,  // 13: steward.delivery.v1.DeliveryService.GetDiff:output_type -> steward.delivery.v1.GetDiffResponse
+	7,  // 14: steward.delivery.v1.DeliveryService.RequestPDFExport:output_type -> steward.delivery.v1.RequestPDFExportResponse
+	9,  // 15: steward.delivery.v1.DeliveryService.GetPDFDownloadLink:output_type -> steward.delivery.v1.GetPDFDownloadLinkResponse
+	11, // 16: steward.delivery.v1.DeliveryService.CreateMagicLink:output_type -> steward.delivery.v1.CreateMagicLinkResponse
+	13, // 17: steward.delivery.v1.DeliveryService.RevokeMagicLink:output_type -> steward.delivery.v1.RevokeMagicLinkResponse
+	15, // 18: steward.delivery.v1.DeliveryService.ResolveMagicLink:output_type -> steward.delivery.v1.ResolveMagicLinkResponse
+	12, // [12:19] is the sub-list for method output_type
+	5,  // [5:12] is the sub-list for method input_type
+	5,  // [5:5] is the sub-list for extension type_name
+	5,  // [5:5] is the sub-list for extension extendee
+	0,  // [0:5] is the sub-list for field type_name
 }
 
 func init() { file_steward_delivery_v1_delivery_proto_init() }
@@ -925,7 +1032,7 @@ func file_steward_delivery_v1_delivery_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_steward_delivery_v1_delivery_proto_rawDesc), len(file_steward_delivery_v1_delivery_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   15,
+			NumMessages:   16,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

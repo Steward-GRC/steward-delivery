@@ -15,12 +15,20 @@ contract between the two; `internal/pdfrender` pins it in tests.
 | Field | Value |
 | --- | --- |
 | `policyVersionId` | The version to print. |
-| `fetchURL` | `INTERNAL_BASE_URL` + `/internal/policies/<version id>/html`. |
+| `fetchURL` | `INTERNAL_BASE_URL` + `/internal/policies/<version id>/html`; with `?job=<job id>` when the export asked for the version-history page. |
 | `outputBucket` | `S3_BUCKET`. |
 | `outputKey` | `artifacts/<version id>/<job id>.pdf`. |
 | `sensitivity` | `standard` or `sensitive`; `sensitive` prints the watermark. |
 | `requestedBy` | The requesting user's id. |
 | `trace` | Optional trace context. |
+
+## Version-history page
+
+An export request with `include_history` carries the version's events (date, version number, wording
+and actor name), which the gateway has already checked against what the requester may see. Delivery
+keeps them on the `pdf_jobs` row (`history`, JSON) and the HTML endpoint appends a "Version history"
+section, starting on a new page, when the fetch URL names that job. The renderer needs no change: it
+fetches the URL as given. A job id that does not belong to the version in the path is a 404.
 
 ## Status (the renderer writes)
 
