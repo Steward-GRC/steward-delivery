@@ -7,8 +7,12 @@ import (
 	"context"
 	"errors"
 	"testing"
+	"time"
 
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
+	"google.golang.org/protobuf/types/known/timestamppb"
 
 	policyv1 "github.com/Steward-GRC/steward-delivery/gen/go/thirdparty/core/v1"
 	"github.com/Steward-GRC/steward-delivery/internal/corepolicy"
@@ -142,5 +146,40 @@ func TestGetDiffPropagatesRPCError(t *testing.T) {
 
 	if _, err := c.GetDiff(context.Background(), "a", "b"); err == nil {
 		t.Fatal("expected error from RPC failure")
+	}
+}
+
+func TestGetUpdatedAtIsTheDateTheVersionWasPublished(t *testing.T) {
+	published := time.Date(2026, 10, 2, 14, 2, 0, 0, time.UTC)
+	core := &fakeCore{getResp: &policyv1.GetPolicyVersionResponse{Version: &policyv1.PolicyVersion{
+		Id:          "pv-1",
+		CreatedAt:   timestamppb.New(published.Add(-72 * time.Hour)),
+		PublishedAt: timestamppb.New(published),
+	}}}
+	got, err := corepolicy.New(core).GetUpdatedAt(context.Background(), "pv-1")
+	if err != nil {
+		t.Fatalf("GetUpdatedAt: %v", err)
+	}
+	if !got.Equal(published) {
+		t.Errorf("got %v, want %v", got, published)
+	}
+}
+
+func TestGetUpdatedAtFallsBackToCreatedForAnUnpublishedVersion(t *testing.T) {
+	created := time.Date(2026, 9, 28, 9, 0, 0, 0, time.UTC)
+	core := &fakeCore{getResp: &policyv1.GetPolicyVersionResponse{Version: &policyv1.PolicyVersion{
+		Id: "pv-1", CreatedAt: timestamppb.New(created),
+	}}}
+	got, err := corepolicy.New(core).GetUpdatedAt(context.Background(), "pv-1")
+	if err != nil || !got.Equal(created) {
+		t.Errorf("got %v, %v; want %v", got, err, created)
+	}
+}
+
+func TestGetUpdatedAtUnknownVersionIsNotFound(t *testing.T) {
+	core := &fakeCore{getErr: status.Error(codes.NotFound, "no")}
+	_, err := corepolicy.New(core).GetUpdatedAt(context.Background(), "pv-1")
+	if !errors.Is(err, policyhttp.ErrNotFound) {
+		t.Errorf("got %v, want ErrNotFound", err)
 	}
 }

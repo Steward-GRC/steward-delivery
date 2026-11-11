@@ -11,6 +11,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 )
 
 type stubPolicy struct {
@@ -90,5 +91,53 @@ func TestServeHTML_UpstreamError(t *testing.T) {
 
 	if rec.Code != http.StatusBadGateway {
 		t.Fatalf("status: got %d, want 502", rec.Code)
+	}
+}
+
+type stubUpdated struct {
+	at  time.Time
+	err error
+}
+
+func (s stubUpdated) GetUpdatedAt(_ context.Context, _ string) (time.Time, error) {
+	return s.at, s.err
+}
+
+func serve(t *testing.T, h *Handler) (int, string) {
+	t.Helper()
+	mux := http.NewServeMux()
+	h.Mount(mux)
+	rec := httptest.NewRecorder()
+	mux.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/internal/policies/pv-42/html", nil))
+	body, _ := io.ReadAll(rec.Body)
+	return rec.Code, string(body)
+}
+
+func TestServeHTML_LastUpdatedLineComesFirst(t *testing.T) {
+	h := New(stubPolicy{content: []byte(minimalLexical)}, nil).
+		WithUpdated(stubUpdated{at: time.Date(2026, 10, 2, 14, 2, 0, 0, time.UTC)})
+	code, body := serve(t, h)
+	if code != http.StatusOK {
+		t.Fatalf("status: got %d, want 200", code)
+	}
+	const want = `<p class="policy-updated">Last updated 2 Oct 2026</p>`
+	if !strings.HasPrefix(body, want) {
+		t.Errorf("want the Last updated line first, got:\n%s", body)
+	}
+}
+
+func TestServeHTML_NoDateNoLine(t *testing.T) {
+	h := New(stubPolicy{content: []byte(minimalLexical)}, nil).WithUpdated(stubUpdated{})
+	_, body := serve(t, h)
+	if strings.Contains(body, "Last updated") {
+		t.Errorf("a version with no date should print no line, got:\n%s", body)
+	}
+}
+
+func TestServeHTML_UpdatedLookupFailureIsBadGateway(t *testing.T) {
+	h := New(stubPolicy{content: []byte(minimalLexical)}, nil).
+		WithUpdated(stubUpdated{err: errors.New("core down")})
+	if code, _ := serve(t, h); code != http.StatusBadGateway {
+		t.Fatalf("status: got %d, want 502", code)
 	}
 }

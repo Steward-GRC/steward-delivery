@@ -237,7 +237,7 @@ func run(ctx context.Context, logger log.Logger) error {
 	}()
 	internalDone := make(chan error, 1)
 	go func() {
-		internalDone <- serveInternal(ctx, internalLis, policyhttp.NewWithAppendix(policyClient, appendixClient, nil).WithLogger(logger), guardInternal)
+		internalDone <- serveInternal(ctx, internalLis, policyhttp.NewWithAppendix(policyClient, appendixClient, nil).WithUpdated(policyClient).WithLogger(logger), guardInternal)
 		cancel()
 	}()
 	opts := server.Options{CertFile: cfg.TLSCertFile, KeyFile: cfg.TLSKeyFile, ClientCAFile: cfg.TLSClientCAFile, Auth: auth, Checker: checker}

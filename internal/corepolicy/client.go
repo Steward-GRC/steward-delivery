@@ -10,6 +10,7 @@ package corepolicy
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
@@ -86,6 +87,30 @@ func (c *Client) GetContent(ctx context.Context, policyVersionID string) ([]byte
 		return nil, fmt.Errorf("policy version %q: %w", policyVersionID, policyhttp.ErrNotFound)
 	}
 	return []byte(v.GetContentJson()), nil
+}
+
+// GetUpdatedAt is when the version last changed. A published version is
+// frozen, so that is the day it was published; a version not published yet
+// has only the day it was created. A zero time means core sent neither.
+func (c *Client) GetUpdatedAt(ctx context.Context, policyVersionID string) (time.Time, error) {
+	resp, err := c.core.GetPolicyVersion(ctx, &corev1.GetPolicyVersionRequest{Id: policyVersionID})
+	if status.Code(err) == codes.NotFound {
+		return time.Time{}, fmt.Errorf("policy version %q: %w", policyVersionID, policyhttp.ErrNotFound)
+	}
+	if err != nil {
+		return time.Time{}, fmt.Errorf("core GetPolicyVersion %q: %w", policyVersionID, err)
+	}
+	v := resp.GetVersion()
+	if v == nil {
+		return time.Time{}, fmt.Errorf("policy version %q: %w", policyVersionID, policyhttp.ErrNotFound)
+	}
+	if at := v.GetPublishedAt(); at != nil {
+		return at.AsTime(), nil
+	}
+	if at := v.GetCreatedAt(); at != nil {
+		return at.AsTime(), nil
+	}
+	return time.Time{}, nil
 }
 
 // GetDiff maps core's DiffVersions onto delivery's SectionDiff. Core's
