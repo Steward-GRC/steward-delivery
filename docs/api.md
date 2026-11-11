@@ -2,7 +2,8 @@
 
 The API is `steward.delivery.v1`, in [`proto/steward/delivery/v1`](../proto/steward/delivery/v1),
 with the Go stubs committed in `gen/go`. Access to every RPC is enforced at the gateway; delivery
-records the user ids a request names. Errors carry an `ErrorInfo` ([error codes](error-codes.md)).
+records the user ids a request names. The one check delivery makes itself is on
+`GetPDFDownloadLink`, below. Errors carry an `ErrorInfo` ([error codes](error-codes.md)).
 
 | RPC | Does |
 | --- | --- |
@@ -12,7 +13,12 @@ records the user ids a request names. Errors carry an `ErrorInfo` ([error codes]
 | `RevokeMagicLink` | Ends a link at once; revoking twice succeeds. |
 | `ResolveMagicLink` | Returns the version a live link opens. A sensitive link needs `viewer_email` and always requires the watermark. Expired, revoked and unknown links each have their own code. |
 | `RequestPDFExport` | Records a pending job and creates its [`PdfRender`](pdf-render.md); returns the job id. `PDF_EXPORT_DISABLED` while export is off. |
-| `GetPDFDownloadLink` | A presigned download URL for a done job (15 minutes by default). `PDF_EXPORT_NOT_READY` while it renders, `PDF_EXPORT_FAILED` if the renderer failed. |
+| `GetPDFDownloadLink` | A presigned download URL for a done job (15 minutes by default), for the user who requested it only. `PDF_EXPORT_NOT_READY` while it renders, `PDF_EXPORT_FAILED` if the renderer failed. |
+
+`GetPDFDownloadLink` compares the job's `requester_user_id` with the end user the gateway passes
+on the call (the go-grpc-actor actor, trusted only from a caller verified as on-behalf). Another
+user, a call with no user (including any call while `WORKLOAD_AUTH=disabled`) and an unknown job
+all get `PDF_EXPORT_NOT_FOUND`, before the job's state is read, so a job id reveals nothing.
 
 The export watermark follows the policy, never the caller: a version is exported as sensitive if
 its content says so or its policy is classified sensitive in core.

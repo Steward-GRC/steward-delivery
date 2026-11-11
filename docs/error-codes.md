@@ -15,7 +15,7 @@ the caller; every other code is sent as `Code N: Internal Error`. Delivery owns 
 | 8006 | `MAGIC_LINK_REVOKED` | magic link | the magic link was revoked | yes |
 | 8007 | `VIEWER_EMAIL_REQUIRED` | magic link | a sensitive magic link was opened without the viewer's email address | yes |
 | 8008 | `PDF_EXPORT_DISABLED` | PDF export | PDF export is off, or the service has no Kubernetes API to create the render on | yes |
-| 8009 | `PDF_EXPORT_NOT_FOUND` | PDF export | no PDF export job has that id | yes |
+| 8009 | `PDF_EXPORT_NOT_FOUND` | PDF export | no PDF export job has that id, or the caller did not start it | yes |
 | 8010 | `PDF_EXPORT_NOT_READY` | PDF export | the PDF is still rendering | yes |
 | 8011 | `PDF_EXPORT_FAILED` | PDF export | the renderer reported a failure; the job row holds its message | yes |
 | 8012 | `INVALID_REQUEST` | request | a required request field is empty | yes |

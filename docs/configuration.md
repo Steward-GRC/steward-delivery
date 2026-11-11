@@ -44,7 +44,9 @@ problem listed. `.env.example` has local defaults.
 - **Its own API:** every call to delivery's gRPC API must carry the caller's token. Delivery
   verifies it against the issuer's JWKS, maps `<namespace>/steward-<name>` to the caller `<name>`,
   and checks the per-method allow-list in `internal/grpcsvc/callers.go`. The gateway is the only
-  caller, on behalf of the signed-in user, on every method.
+  caller, on behalf of the signed-in user, on every method. The signed-in user's actor
+  (go-grpc-actor) is trusted only from that verified on-behalf caller, so with
+  `WORKLOAD_AUTH=disabled` no call carries a user and PDF download links are refused.
 - **The internal HTTP port:** `GET /internal/policies/{versionId}/html` needs
   `Authorization: Bearer <token>` with the same check, and only `pdf-renderer` is allowed. A
   missing or rejected token is 401, another verified caller 403, and a verifier with no key set

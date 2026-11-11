@@ -84,6 +84,9 @@ func TestResolveMagicLinkStatesAreCoded(t *testing.T) {
 type stateJobs struct{ err error }
 
 func (s stateJobs) Create(context.Context, string, string, string) error { return nil }
+func (s stateJobs) Get(_ context.Context, jobID string) (store.PDFJob, error) {
+	return store.PDFJob{JobID: jobID, RequesterUserID: "bob"}, nil
+}
 func (s stateJobs) GetArtifactKey(context.Context, string) (string, error) {
 	return "", s.err
 }
@@ -97,7 +100,7 @@ func TestGetPDFDownloadLinkStatesAreCoded(t *testing.T) {
 	for want, jobErr := range cases {
 		h := grpcsvc.NewDeliveryHandlerFull(&stubPolicyClient{}, magiclink.NewService(newFakeMLRepo(), &noopEmitter{}),
 			nil, grpcsvc.PDFConfig{}, stateJobs{err: jobErr}, &stubSigner{url: "https://objects.example.org/signed"})
-		_, err := h.GetPDFDownloadLink(context.Background(), &deliveryv1.GetPDFDownloadLinkRequest{JobId: "job"})
+		_, err := h.GetPDFDownloadLink(as("bob"), &deliveryv1.GetPDFDownloadLinkRequest{JobId: "job"})
 		require.Equal(t, want, symbol(t, err))
 	}
 }
