@@ -231,3 +231,37 @@ func TestPDFExportMissingIsEmptyWhenEverythingIsSet(t *testing.T) {
 		t.Fatalf("PDFExportMissing: got %v, want none", got)
 	}
 }
+
+// An unset or empty endpoint means tracing is off; go-otel's Init exports
+// nowhere only for an empty endpoint.
+func TestLoadOTLPEndpoint(t *testing.T) {
+	cases := map[string]struct {
+		set  bool
+		val  string
+		want string
+	}{
+		"unset": {},
+		"empty": {set: true},
+		"set":   {set: true, val: "otel.example.org:4317", want: "otel.example.org:4317"},
+	}
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			t.Setenv("WORKLOAD_AUTH", "disabled")
+			t.Setenv("DATABASE_DSN", "postgres://delivery")
+			t.Setenv("CORE_GRPC_ADDR", "policy-core:9090")
+			t.Setenv("OTEL_EXPORTER_OTLP_ENDPOINT", "")
+			if !tc.set {
+				os.Unsetenv("OTEL_EXPORTER_OTLP_ENDPOINT")
+			} else {
+				t.Setenv("OTEL_EXPORTER_OTLP_ENDPOINT", tc.val)
+			}
+			c, err := Load()
+			if err != nil {
+				t.Fatalf("Load: %v", err)
+			}
+			if c.OTLPEndpoint != tc.want {
+				t.Fatalf("OTLPEndpoint = %q, want %q", c.OTLPEndpoint, tc.want)
+			}
+		})
+	}
+}
