@@ -147,3 +147,81 @@ func TestRevokeBlocksSubsequentResolve(t *testing.T) {
 		t.Errorf("expected ErrTokenRevoked after revoke, got %v", err)
 	}
 }
+
+func (f *fakeRepo) List(_ context.Context, filter store.MagicLinkFilter) ([]store.MagicLink, string, error) {
+	var out []store.MagicLink
+	for _, ml := range f.tokens {
+		out = append(out, ml)
+	}
+	_ = filter
+	return out, "", nil
+}
+
+func (f *fakeRepo) Remove(_ context.Context, token string) error {
+	ml, ok := f.tokens[token]
+	if !ok {
+		return store.ErrTokenNotFound
+	}
+	if !ml.Revoked() && time.Now().Before(ml.ExpiresAt) {
+		return store.ErrTokenActive
+	}
+	delete(f.tokens, token)
+	return nil
+}
+
+type loggedEvent struct {
+	action, subject, actor string
+	attrs                  map[string]string
+}
+
+type eventLog struct{ events []loggedEvent }
+
+func (r *eventLog) Emit(_ context.Context, action, subject, actor string, attrs map[string]string) error {
+	r.events = append(r.events, loggedEvent{action, subject, actor, attrs})
+	return nil
+}
+
+func TestRemoveEmitsAnAuditEventNamingTheLinkByFingerprint(t *testing.T) {
+	repo := newFakeRepo()
+	em := &eventLog{}
+	svc := magiclink.NewService(repo, em)
+	created, err := svc.Create(context.Background(), magiclink.CreateRequest{PolicyVersionID: "pv-1", CreatedByUserID: "u1"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := svc.Remove(context.Background(), magiclink.RemoveRequest{Token: created.Token, RemovedByUserID: "admin"}); !errors.Is(err, store.ErrTokenActive) {
+		t.Fatalf("remove active: %v", err)
+	}
+	if err := svc.Revoke(context.Background(), magiclink.RevokeRequest{Token: created.Token, RevokedByUserID: "admin"}); err != nil {
+		t.Fatal(err)
+	}
+	em.events = nil
+
+	if err := svc.Remove(context.Background(), magiclink.RemoveRequest{Token: created.Token, RemovedByUserID: "admin"}); err != nil {
+		t.Fatal(err)
+	}
+	if len(em.events) != 1 {
+		t.Fatalf("events %+v", em.events)
+	}
+	ev := em.events[0]
+	if ev.action != "magic_link.removed" || ev.subject != "magic_link:"+magiclink.Fingerprint(created.Token) || ev.actor != "admin" {
+		t.Errorf("event %+v", ev)
+	}
+	for _, v := range ev.attrs {
+		if v == created.Token {
+			t.Error("the token is in the event")
+		}
+	}
+}
+
+func TestListPassesTheFilterAndPageThrough(t *testing.T) {
+	repo := newFakeRepo()
+	svc := magiclink.NewService(repo, &fakeEmitter{})
+	if _, err := svc.Create(context.Background(), magiclink.CreateRequest{PolicyVersionID: "pv-1", CreatedByUserID: "u1"}); err != nil {
+		t.Fatal(err)
+	}
+	links, _, err := svc.List(context.Background(), store.MagicLinkFilter{})
+	if err != nil || len(links) != 1 {
+		t.Errorf("List: %v %v", links, err)
+	}
+}

@@ -19,3 +19,4 @@ the caller; every other code is sent as `Code N: Internal Error`. Delivery owns 
 | 8010 | `PDF_EXPORT_NOT_READY` | PDF export | the PDF is still rendering | yes |
 | 8011 | `PDF_EXPORT_FAILED` | PDF export | the renderer reported a failure; the job row holds its message | yes |
 | 8012 | `INVALID_REQUEST` | request | a required request field is empty | yes |
+| 8013 | `MAGIC_LINK_ACTIVE` | magic link | the magic link still works, so it cannot be removed until it is revoked or expired | yes |

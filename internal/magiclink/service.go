@@ -29,6 +29,8 @@ type Repo interface {
 	Create(ctx context.Context, ml store.MagicLink) error
 	Resolve(ctx context.Context, token string) (store.MagicLink, error)
 	Revoke(ctx context.Context, token, revokedByUserID string) error
+	List(ctx context.Context, f store.MagicLinkFilter) ([]store.MagicLink, string, error)
+	Remove(ctx context.Context, token string) error
 }
 
 // AuditEmitter records the audit and activity events. Emission is best
@@ -154,6 +156,24 @@ func (s *Service) Revoke(ctx context.Context, req RevokeRequest) error {
 		return err
 	}
 	_ = s.emitter.Emit(ctx, "magic_link.revoked", "magic_link:"+Fingerprint(req.Token), req.RevokedByUserID, nil)
+	return nil
+}
+
+// List returns the issued links, newest first, and the next page's token.
+func (s *Service) List(ctx context.Context, f store.MagicLinkFilter) ([]store.MagicLink, string, error) {
+	return s.repo.List(ctx, f)
+}
+
+// RemoveRequest is the input for Service.Remove.
+type RemoveRequest struct{ Token, RemovedByUserID string }
+
+// Remove deletes a revoked or expired link and emits magic_link.removed. A
+// link that still works is store.ErrTokenActive.
+func (s *Service) Remove(ctx context.Context, req RemoveRequest) error {
+	if err := s.repo.Remove(ctx, req.Token); err != nil {
+		return err
+	}
+	_ = s.emitter.Emit(ctx, "magic_link.removed", "magic_link:"+Fingerprint(req.Token), req.RemovedByUserID, nil)
 	return nil
 }
 
