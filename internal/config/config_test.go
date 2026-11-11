@@ -249,11 +249,11 @@ func TestLoadOTLPEndpoint(t *testing.T) {
 			t.Setenv("WORKLOAD_AUTH", "disabled")
 			t.Setenv("DATABASE_DSN", "postgres://delivery")
 			t.Setenv("CORE_GRPC_ADDR", "policy-core:9090")
-			t.Setenv("OTEL_EXPORTER_OTLP_ENDPOINT", "")
+			t.Setenv("OTEL_EXPORTER_OTLP_ENDPOINT", tc.val)
 			if !tc.set {
-				os.Unsetenv("OTEL_EXPORTER_OTLP_ENDPOINT")
-			} else {
-				t.Setenv("OTEL_EXPORTER_OTLP_ENDPOINT", tc.val)
+				if err := os.Unsetenv("OTEL_EXPORTER_OTLP_ENDPOINT"); err != nil {
+					t.Fatalf("Unsetenv: %v", err)
+				}
 			}
 			c, err := Load()
 			if err != nil {
