@@ -146,6 +146,28 @@ func (h *DeliveryHandler) content(ctx context.Context, versionID string) ([]byte
 	return raw, nil
 }
 
+// isSensitive says whether a version is sensitive: its content says so, or
+// its policy is classified sensitive. Callers never decide it. A failed
+// classification read is an error, never "not sensitive".
+func (h *DeliveryHandler) isSensitive(ctx context.Context, versionID string, raw []byte) (bool, error) {
+	var meta struct {
+		Sensitivity bool `json:"sensitivity"`
+	}
+	// Malformed content leaves the flag false; the renderer then fails on it.
+	_ = json.Unmarshal(raw, &meta)
+	if meta.Sensitivity {
+		return true, nil
+	}
+	if h.sensitivity == nil {
+		return false, nil
+	}
+	sensitive, err := h.sensitivity.Sensitive(ctx, versionID)
+	if err != nil {
+		return false, errcodes.CoreUnavailable("get_policy", err)
+	}
+	return sensitive, nil
+}
+
 // GetRenderedContent renders a version's content with the server renderer.
 func (h *DeliveryHandler) GetRenderedContent(ctx context.Context, req *deliveryv1.GetRenderedContentRequest) (*deliveryv1.GetRenderedContentResponse, error) {
 	raw, err := h.content(ctx, req.GetPolicyVersionId())
@@ -186,16 +208,9 @@ func (h *DeliveryHandler) RequestPDFExport(ctx context.Context, req *deliveryv1.
 	if err != nil {
 		return nil, errcodes.Error(ctx, err)
 	}
-	var meta struct {
-		Sensitivity bool `json:"sensitivity"`
-	}
-	// Malformed content leaves the flag false; the renderer then fails on it.
-	_ = json.Unmarshal(raw, &meta)
-	sensitive := meta.Sensitivity
-	if !sensitive && h.sensitivity != nil {
-		if sensitive, err = h.sensitivity.Sensitive(ctx, versionID); err != nil {
-			return nil, errcodes.Error(ctx, errcodes.CoreUnavailable("get_policy", err))
-		}
+	sensitive, err := h.isSensitive(ctx, versionID, raw)
+	if err != nil {
+		return nil, errcodes.Error(ctx, err)
 	}
 	sensitivity := "standard"
 	if sensitive {
@@ -279,15 +294,25 @@ func (h *DeliveryHandler) GetPDFDownloadLink(ctx context.Context, req *deliveryv
 	return &deliveryv1.GetPDFDownloadLinkResponse{SignedUrl: url, ExpiresAt: timestamppb.New(expiresAt)}, nil
 }
 
-// CreateMagicLink issues a link to one version.
+// CreateMagicLink issues a link to one version. Whether it is sensitive (it
+// asks the viewer's email, watermarks the view and lasts less long) follows
+// the version and its policy; the request's sensitive field is ignored.
 func (h *DeliveryHandler) CreateMagicLink(ctx context.Context, req *deliveryv1.CreateMagicLinkRequest) (*deliveryv1.CreateMagicLinkResponse, error) {
 	if req.GetPolicyVersionId() == "" {
 		return nil, errcodes.Error(ctx, errcodes.Required("policy_version_id"))
 	}
+	raw, err := h.content(ctx, req.GetPolicyVersionId())
+	if err != nil {
+		return nil, errcodes.Error(ctx, err)
+	}
+	sensitive, err := h.isSensitive(ctx, req.GetPolicyVersionId(), raw)
+	if err != nil {
+		return nil, errcodes.Error(ctx, err)
+	}
 	resp, err := h.mlSvc.Create(ctx, magiclink.CreateRequest{
 		PolicyVersionID: req.GetPolicyVersionId(),
 		CreatedByUserID: req.GetCreatedByUserId(),
-		Sensitive:       req.GetSensitive(),
+		Sensitive:       sensitive,
 	})
 	if err != nil {
 		return nil, errcodes.Error(ctx, errcodes.StoreUnavailable("create_magic_link", err))
@@ -323,6 +348,17 @@ func (h *DeliveryHandler) ResolveMagicLink(ctx context.Context, req *deliveryv1.
 		return nil, errcodes.Error(ctx, errcodes.MagicLinkRevoked())
 	case err != nil:
 		return nil, errcodes.Error(ctx, errcodes.StoreUnavailable("resolve_magic_link", err))
+	}
+	// A policy classified sensitive after the link was made still asks for the
+	// email and the watermark.
+	if !resp.Sensitive && h.sensitivity != nil {
+		now, err := h.sensitivity.Sensitive(ctx, resp.PolicyVersionID)
+		if err != nil {
+			return nil, errcodes.Error(ctx, errcodes.CoreUnavailable("get_policy", err))
+		}
+		if now {
+			resp.Sensitive, resp.WatermarkRequired = true, true
+		}
 	}
 	if resp.Sensitive && req.GetViewerEmail() == "" {
 		return nil, errcodes.Error(ctx, errcodes.ViewerEmailRequired())

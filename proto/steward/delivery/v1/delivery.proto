@@ -81,8 +81,10 @@ message GetPDFDownloadLinkResponse {
 message CreateMagicLinkRequest {
   string policy_version_id = 1;
   string created_by_user_id = 2;
-  // A sensitive link expires sooner, always shows the watermark and asks the
-  // viewer for an email address before it opens.
+  // Ignored. Delivery decides from the version and its policy: a sensitive
+  // link expires sooner, always shows the watermark and asks the viewer for an
+  // email address before it opens. The field stays so older callers still
+  // compile.
   bool sensitive = 3;
 }
 
