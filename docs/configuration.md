@@ -23,7 +23,7 @@ problem listed. `.env.example` has local defaults.
 | `WORKLOAD_AUDIENCE` | `steward` | The audience a caller's token must carry. |
 | `WORKLOAD_ALLOWED_SERVICEACCOUNTS` | required | Comma list of `<namespace>/<serviceaccount>` that may call delivery at all: `steward/steward-gateway,steward/steward-pdf-renderer`. |
 | `WORKLOAD_AUTH` | enabled | `disabled` turns caller authentication off, for local runs only. Nothing else turns it off, and it can't be combined with `WORKLOAD_OIDC_ISSUER`. |
-| `OTEL_EXPORTER_OTLP_ENDPOINT` | `localhost:4317` | Traces and metrics. |
+| `OTEL_EXPORTER_OTLP_ENDPOINT` | empty | Traces and metrics. Unset or empty turns tracing off. |
 | `MAGIC_LINK_NONSENSITIVE_TTL` | `720h` | A magic link's lifetime. |
 | `MAGIC_LINK_SENSITIVE_TTL` | `48h` | A sensitive magic link's lifetime. |
 | `PDF_LINK_TTL` | `15m` | A PDF download link's lifetime. |
