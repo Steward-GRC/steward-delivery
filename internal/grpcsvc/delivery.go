@@ -414,3 +414,57 @@ func (h *DeliveryHandler) ResolveMagicLink(ctx context.Context, req *deliveryv1.
 		WatermarkRequired: resp.WatermarkRequired,
 	}, nil
 }
+
+// ListMagicLinks lists the issued links, newest first, with their status.
+func (h *DeliveryHandler) ListMagicLinks(ctx context.Context, req *deliveryv1.ListMagicLinksRequest) (*deliveryv1.ListMagicLinksResponse, error) {
+	links, next, err := h.mlSvc.List(ctx, store.MagicLinkFilter{
+		PolicyVersionIDs: req.GetPolicyVersionIds(),
+		PageSize:         int(req.GetPageSize()),
+		PageToken:        req.GetPageToken(),
+	})
+	if errors.Is(err, store.ErrInvalidPageToken) {
+		return nil, errcodes.Error(ctx, errcodes.InvalidPageToken())
+	}
+	if err != nil {
+		return nil, errcodes.Error(ctx, errcodes.StoreUnavailable("list_magic_links", err))
+	}
+	now := time.Now()
+	out := make([]*deliveryv1.MagicLinkInfo, 0, len(links))
+	for _, l := range links {
+		info := &deliveryv1.MagicLinkInfo{
+			Token:           l.Token,
+			Fingerprint:     magiclink.Fingerprint(l.Token),
+			PolicyVersionId: l.PolicyVersionID,
+			CreatedByUserId: l.CreatedByUserID,
+			Sensitive:       l.Sensitive,
+			Status:          l.Status(now),
+			CreatedAt:       timestamppb.New(l.CreatedAt),
+			ExpiresAt:       timestamppb.New(l.ExpiresAt),
+		}
+		if l.RevokedAt != nil {
+			info.RevokedAt = timestamppb.New(*l.RevokedAt)
+		}
+		if l.RevokedByUserID != nil {
+			info.RevokedByUserId = *l.RevokedByUserID
+		}
+		out = append(out, info)
+	}
+	return &deliveryv1.ListMagicLinksResponse{Links: out, NextPageToken: next}, nil
+}
+
+// RemoveMagicLink deletes a revoked or expired link; an active one is refused.
+func (h *DeliveryHandler) RemoveMagicLink(ctx context.Context, req *deliveryv1.RemoveMagicLinkRequest) (*deliveryv1.RemoveMagicLinkResponse, error) {
+	if req.GetToken() == "" {
+		return nil, errcodes.Error(ctx, errcodes.Required("token"))
+	}
+	err := h.mlSvc.Remove(ctx, magiclink.RemoveRequest{Token: req.GetToken(), RemovedByUserID: req.GetRemovedByUserId()})
+	switch {
+	case errors.Is(err, store.ErrTokenNotFound):
+		return nil, errcodes.Error(ctx, errcodes.MagicLinkNotFound())
+	case errors.Is(err, store.ErrTokenActive):
+		return nil, errcodes.Error(ctx, errcodes.MagicLinkActive())
+	case err != nil:
+		return nil, errcodes.Error(ctx, errcodes.StoreUnavailable("remove_magic_link", err))
+	}
+	return &deliveryv1.RemoveMagicLinkResponse{Removed: true}, nil
+}

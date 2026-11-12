@@ -30,6 +30,13 @@ service DeliveryService {
   rpc RevokeMagicLink(RevokeMagicLinkRequest) returns (RevokeMagicLinkResponse);
   // ResolveMagicLink checks a magic link and returns the version it opens.
   rpc ResolveMagicLink(ResolveMagicLinkRequest) returns (ResolveMagicLinkResponse);
+  // ListMagicLinks lists the issued links, newest first, with their status.
+  // The result holds bearer tokens: the caller must show it to site admins
+  // only.
+  rpc ListMagicLinks(ListMagicLinksRequest) returns (ListMagicLinksResponse);
+  // RemoveMagicLink deletes a revoked or expired link, so it leaves the list.
+  // An active link is refused (FailedPrecondition): revoke it first.
+  rpc RemoveMagicLink(RemoveMagicLinkRequest) returns (RemoveMagicLinkResponse);
 }
 
 message GetRenderedContentRequest {
@@ -132,4 +139,48 @@ message ResolveMagicLinkResponse {
   string policy_version_id = 1;
   bool sensitive = 2;
   bool watermark_required = 3;
+}
+
+message ListMagicLinksRequest {
+  // Only links to these versions; empty means every link. The caller lists a
+  // policy's links by sending that policy's version ids.
+  repeated string policy_version_ids = 1;
+  // 1 to 200; anything else means 50.
+  int32 page_size = 2;
+  // The next_page_token of the previous page.
+  string page_token = 3;
+}
+
+message ListMagicLinksResponse {
+  repeated MagicLinkInfo links = 1;
+  // Empty on the last page.
+  string next_page_token = 2;
+}
+
+// MagicLinkInfo is one issued link.
+message MagicLinkInfo {
+  // The bearer token the share URL carries.
+  string token = 1;
+  // The short name of the token that audit events use.
+  string fingerprint = 2;
+  string policy_version_id = 3;
+  string created_by_user_id = 4;
+  bool sensitive = 5;
+  // "active", "revoked" or "expired"; a revoked link that is also past its
+  // expiry is "revoked".
+  string status = 6;
+  google.protobuf.Timestamp created_at = 7;
+  google.protobuf.Timestamp expires_at = 8;
+  // Unset until the link is revoked.
+  google.protobuf.Timestamp revoked_at = 9;
+  string revoked_by_user_id = 10;
+}
+
+message RemoveMagicLinkRequest {
+  string token = 1;
+  string removed_by_user_id = 2;
+}
+
+message RemoveMagicLinkResponse {
+  bool removed = 1;
 }

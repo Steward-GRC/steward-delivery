@@ -33,6 +33,7 @@ const (
 	CodePDFExportNotReady     = 8010
 	CodePDFExportFailed       = 8011
 	CodeInvalidRequest        = 8012
+	CodeMagicLinkActive       = 8013
 )
 
 const askForNewLink = " Ask the person who shared it for a new one."
@@ -73,6 +74,9 @@ func Entries() []apperr.Entry {
 		{Code: CodePDFExportFailed, Symbol: "PDF_EXPORT_FAILED", Category: apperr.CategoryFailedPrecondition,
 			Title: "PDF export", Cause: "the renderer reported a failure; the job row holds its message",
 			UserSafe: true, Message: "The PDF couldn't be rendered. Try the export again."},
+		{Code: CodeMagicLinkActive, Symbol: "MAGIC_LINK_ACTIVE", Category: apperr.CategoryFailedPrecondition,
+			Title: "magic link", Cause: "the magic link still works, so it cannot be removed until it is revoked or expired",
+			UserSafe: true, Message: "This link is still active. Revoke it before removing it."},
 		{Code: CodeInvalidRequest, Symbol: "INVALID_REQUEST", Category: apperr.CategoryInvalid,
 			Title: "request", Cause: "a required request field is empty",
 			UserSafe: true, Message: "{field} is required."},
@@ -135,6 +139,17 @@ func MagicLinkNotFound() error {
 // MagicLinkExpired codes a token past its expiry.
 func MagicLinkExpired() error {
 	return apperr.Coded(CodeMagicLinkExpired, errors.New("delivery: magic link expired"))
+}
+
+// MagicLinkActive codes a remove of a link that still works.
+func MagicLinkActive() error {
+	return apperr.Coded(CodeMagicLinkActive, errors.New("delivery: magic link is still active"))
+}
+
+// InvalidPageToken codes a page token delivery did not issue.
+func InvalidPageToken() error {
+	return apperr.WithMeta(apperr.Coded(CodeInvalidRequest, errors.New("delivery: page_token is not a token this service issued")),
+		apperr.Meta("field", "page_token"))
 }
 
 // MagicLinkRevoked codes a revoked token.

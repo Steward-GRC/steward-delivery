@@ -138,3 +138,106 @@ func TestMagicLinkResolveUnknownTokenReturnsNotFound(t *testing.T) {
 		t.Errorf("got error %v, want ErrTokenNotFound", err)
 	}
 }
+
+func seedLink(t *testing.T, repo *store.MagicLinkRepo, token, version string, expires time.Time) {
+	t.Helper()
+	if err := repo.Create(context.Background(), store.MagicLink{
+		Token: token, PolicyVersionID: version, CreatedByUserID: "user-001", ExpiresAt: expires,
+	}); err != nil {
+		t.Fatalf("Create %s: %v", token, err)
+	}
+}
+
+func TestMagicLinkListNewestFirstFilteredAndPaged(t *testing.T) {
+	repo := store.NewMagicLinkRepo(newTestDB(t))
+	ctx := context.Background()
+	soon := time.Now().Add(time.Hour)
+	seedLink(t, repo, "t1", "pv-a", soon)
+	seedLink(t, repo, "t2", "pv-b", soon)
+	seedLink(t, repo, "t3", "pv-a", soon)
+
+	all, next, err := repo.List(ctx, store.MagicLinkFilter{})
+	if err != nil || next != "" {
+		t.Fatalf("List: %v next=%q", err, next)
+	}
+	if got := tokens(all); got != "t3,t2,t1" {
+		t.Errorf("order %s, want t3,t2,t1", got)
+	}
+
+	only, _, err := repo.List(ctx, store.MagicLinkFilter{PolicyVersionIDs: []string{"pv-a"}})
+	if err != nil || tokens(only) != "t3,t1" {
+		t.Errorf("filtered %s %v", tokens(only), err)
+	}
+
+	first, next, err := repo.List(ctx, store.MagicLinkFilter{PageSize: 2})
+	if err != nil || tokens(first) != "t3,t2" || next == "" {
+		t.Fatalf("page 1 %s next=%q %v", tokens(first), next, err)
+	}
+	second, next, err := repo.List(ctx, store.MagicLinkFilter{PageSize: 2, PageToken: next})
+	if err != nil || tokens(second) != "t1" || next != "" {
+		t.Errorf("page 2 %s next=%q %v", tokens(second), next, err)
+	}
+	if _, _, err := repo.List(ctx, store.MagicLinkFilter{PageToken: "not-a-token"}); !errors.Is(err, store.ErrInvalidPageToken) {
+		t.Errorf("bad token: %v", err)
+	}
+}
+
+func tokens(links []store.MagicLink) string {
+	out := ""
+	for i, l := range links {
+		if i > 0 {
+			out += ","
+		}
+		out += l.Token
+	}
+	return out
+}
+
+func TestMagicLinkStatus(t *testing.T) {
+	now := time.Now()
+	revoked := now.Add(-time.Minute)
+	for _, tc := range []struct {
+		name string
+		ml   store.MagicLink
+		want string
+	}{
+		{"active", store.MagicLink{ExpiresAt: now.Add(time.Hour)}, store.MagicLinkActive},
+		{"expired", store.MagicLink{ExpiresAt: now.Add(-time.Hour)}, store.MagicLinkExpired},
+		{"revoked", store.MagicLink{ExpiresAt: now.Add(time.Hour), RevokedAt: &revoked}, store.MagicLinkRevoked},
+		{"revoked beats expired", store.MagicLink{ExpiresAt: now.Add(-time.Hour), RevokedAt: &revoked}, store.MagicLinkRevoked},
+	} {
+		if got := tc.ml.Status(now); got != tc.want {
+			t.Errorf("%s: got %q, want %q", tc.name, got, tc.want)
+		}
+	}
+}
+
+func TestMagicLinkRemoveOnlyRevokedOrExpired(t *testing.T) {
+	repo := store.NewMagicLinkRepo(newTestDB(t))
+	ctx := context.Background()
+	seedLink(t, repo, "live", "pv-a", time.Now().Add(time.Hour))
+	seedLink(t, repo, "revoked", "pv-a", time.Now().Add(time.Hour))
+	seedLink(t, repo, "expired", "pv-a", time.Now().Add(-time.Hour))
+	if err := repo.Revoke(ctx, "revoked", "admin"); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := repo.Remove(ctx, "live"); !errors.Is(err, store.ErrTokenActive) {
+		t.Errorf("remove live: %v", err)
+	}
+	if err := repo.Remove(ctx, "nope"); !errors.Is(err, store.ErrTokenNotFound) {
+		t.Errorf("remove unknown: %v", err)
+	}
+	for _, tok := range []string{"revoked", "expired"} {
+		if err := repo.Remove(ctx, tok); err != nil {
+			t.Errorf("remove %s: %v", tok, err)
+		}
+		if _, err := repo.Resolve(ctx, tok); !errors.Is(err, store.ErrTokenNotFound) {
+			t.Errorf("resolve removed %s: %v", tok, err)
+		}
+	}
+	left, _, _ := repo.List(ctx, store.MagicLinkFilter{})
+	if tokens(left) != "live" {
+		t.Errorf("left %s, want live", tokens(left))
+	}
+}

@@ -64,6 +64,10 @@ func (r stateRepo) Resolve(context.Context, string) (store.MagicLink, error) {
 	return store.MagicLink{PolicyVersionID: "pv-1", Sensitive: true, ExpiresAt: time.Now().Add(time.Hour)}, nil
 }
 func (r stateRepo) Revoke(context.Context, string, string) error { return nil }
+func (r stateRepo) List(context.Context, store.MagicLinkFilter) ([]store.MagicLink, string, error) {
+	return nil, "", nil
+}
+func (r stateRepo) Remove(context.Context, string) error { return nil }
 
 func TestResolveMagicLinkStatesAreCoded(t *testing.T) {
 	cases := map[string]error{

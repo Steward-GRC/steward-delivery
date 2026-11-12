@@ -65,6 +65,26 @@ func (f *fakeMLRepo) Resolve(_ context.Context, token string) (store.MagicLink, 
 
 func (f *fakeMLRepo) Revoke(_ context.Context, _, _ string) error { return nil }
 
+func (f *fakeMLRepo) List(_ context.Context, _ store.MagicLinkFilter) ([]store.MagicLink, string, error) {
+	var out []store.MagicLink
+	for _, ml := range f.tokens {
+		out = append(out, ml)
+	}
+	return out, "", nil
+}
+
+func (f *fakeMLRepo) Remove(_ context.Context, token string) error {
+	ml, ok := f.tokens[token]
+	if !ok {
+		return store.ErrTokenNotFound
+	}
+	if ml.Status(time.Now()) == store.MagicLinkActive {
+		return store.ErrTokenActive
+	}
+	delete(f.tokens, token)
+	return nil
+}
+
 // noopEmitter satisfies magiclink.AuditEmitter without recording anything.
 type noopEmitter struct{}
 

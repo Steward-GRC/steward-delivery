@@ -12,6 +12,8 @@ records the user ids a request names. The one check delivery makes itself is on
 | `CreateMagicLink` | Issues a link to a version: 30 days, or 48 hours for a sensitive one (configurable). Sensitivity follows the version (its content flag) and its policy's classification in core; the request's `sensitive` field is ignored. A failed classification read refuses the call. |
 | `RevokeMagicLink` | Ends a link at once; revoking twice succeeds. |
 | `ResolveMagicLink` | Returns the version a live link opens. A sensitive link needs `viewer_email` and always requires the watermark; a link made before its policy was classified sensitive is treated as sensitive too. Expired, revoked and unknown links each have their own code. |
+| `ListMagicLinks` | Lists the issued links newest first (`policy_version_ids` narrows it, `page_size` and `page_token` page it): token, fingerprint, version, creator, sensitivity, status (`active`, `revoked` or `expired`; revoked wins), created, expires and revoked times. The result holds bearer tokens, so the caller shows it to site admins only. |
+| `RemoveMagicLink` | Deletes a revoked or expired link so it leaves the list; an active link is refused (`MAGIC_LINK_ACTIVE`), an unknown one is `MAGIC_LINK_NOT_FOUND`. Emits `magic_link.removed`. |
 | `RequestPDFExport` | Records a pending job and creates its [`PdfRender`](pdf-render.md); returns the job id. `PDF_EXPORT_DISABLED` while export is off. |
 | `GetPDFDownloadLink` | A presigned download URL for a done job (15 minutes by default), for the user who requested it only. `PDF_EXPORT_NOT_READY` while it renders, `PDF_EXPORT_FAILED` if the renderer failed. |
 
@@ -48,6 +50,7 @@ the renderer fails the job instead of retrying.
 | `magic_link.created` | `audit` | `policy_version:<id>` | `link`, `sensitive` |
 | `magic_link.accessed` | `activity` | `policy_version:<id>` | `link`, `viewer_email`, `sensitive` |
 | `magic_link.revoked` | `audit` | `magic_link:<link>` | none |
+| `magic_link.removed` | `audit` | `magic_link:<link>` | none |
 
 `link` is the token's fingerprint (the first 16 hex characters of its SHA-256). An event never
 carries the token itself.
