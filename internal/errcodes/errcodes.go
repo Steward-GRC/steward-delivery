@@ -177,6 +177,12 @@ func Required(field string) error {
 		apperr.Meta("field", field))
 }
 
+// Invalid codes a request field that is present but not acceptable.
+func Invalid(field, why string) error {
+	return apperr.WithMeta(apperr.Coded(CodeInvalidRequest, errors.New("delivery: "+field+" is invalid: "+why)),
+		apperr.Meta("field", field))
+}
+
 type logSink struct{ l log.Logger }
 
 func (s logSink) LogCoded(ctx context.Context, code int, err error) {

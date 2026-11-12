@@ -63,6 +63,26 @@ message SectionDiff {
 message RequestPDFExportRequest {
   string policy_version_id = 1;
   string requester_user_id = 2;
+  // True asks for a version-history page after the policy. Delivery has no
+  // history source of its own: the gateway sends the events in history,
+  // already checked against what the requester may see and with names
+  // resolved. True with no events prints a page that says none are recorded.
+  bool include_history = 3;
+  // The events of the version, in the order to print them. Ignored unless
+  // include_history is true; at most 500.
+  repeated VersionHistoryEntry history = 4;
+}
+
+// VersionHistoryEntry is one line of the version-history page: who did what
+// to which version, and when.
+message VersionHistoryEntry {
+  google.protobuf.Timestamp occurred_at = 1;
+  // The number of the policy version the event is about; 0 when none.
+  int32 version_number = 2;
+  // What happened, in words ("Submitted for review", "Approved").
+  string label = 3;
+  // Who did it, by display name; empty for a system event.
+  string actor_name = 4;
 }
 
 message RequestPDFExportResponse {
