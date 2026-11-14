@@ -25,11 +25,17 @@ type lexicalDoc struct {
 }
 
 type lexicalNode struct {
-	Type       string        `json:"type"`
-	SectionKey string        `json:"sectionKey,omitempty"`
-	Title      string        `json:"title,omitempty"`
-	Text       string        `json:"text,omitempty"`
-	Children   []lexicalNode `json:"children,omitempty"`
+	Type       string `json:"type"`
+	SectionKey string `json:"sectionKey,omitempty"`
+	Title      string `json:"title,omitempty"`
+	Text       string `json:"text,omitempty"`
+	Tag        string `json:"tag,omitempty"`
+	ListType   string `json:"listType,omitempty"`
+	URL        string `json:"url,omitempty"`
+	// Format is numeric (a bit mask) on text nodes and a string (alignment)
+	// on element nodes, so it is kept raw and read only where it applies.
+	Format   json.RawMessage `json:"format,omitempty"`
+	Children []lexicalNode   `json:"children,omitempty"`
 }
 
 const indentUnit = "  "
@@ -122,8 +128,59 @@ func renderNode(buf *bytes.Buffer, node lexicalNode, depth int) error {
 		}
 		buf.WriteString(`</p>`)
 
+	case "heading":
+		tag := headingTag(node.Tag)
+		fmt.Fprintf(buf, `<%s>`, tag)
+		if err := renderChildren(buf, node.Children, depth+1); err != nil {
+			return err
+		}
+		fmt.Fprintf(buf, `</%s>`, tag)
+
+	case "list":
+		tag := "ul"
+		if node.ListType == "number" || node.Tag == "ol" {
+			tag = "ol"
+		}
+		fmt.Fprintf(buf, `<%s>`, tag)
+		if err := renderChildren(buf, node.Children, depth+1); err != nil {
+			return err
+		}
+		fmt.Fprintf(buf, `</%s>`, tag)
+
+	case "listitem":
+		buf.WriteString(`<li>`)
+		if err := renderChildren(buf, node.Children, depth+1); err != nil {
+			return err
+		}
+		buf.WriteString(`</li>`)
+
+	case "quote":
+		buf.WriteString(`<blockquote>`)
+		if err := renderChildren(buf, node.Children, depth+1); err != nil {
+			return err
+		}
+		buf.WriteString(`</blockquote>`)
+
+	case "linebreak":
+		buf.WriteString(`<br>`)
+
+	case "link", "autolink":
+		safe := safeURL(node.URL)
+		if safe != "" {
+			fmt.Fprintf(buf, `<a href="%s">`, html.EscapeString(safe))
+		}
+		if err := renderChildren(buf, node.Children, depth+1); err != nil {
+			return err
+		}
+		if safe != "" {
+			buf.WriteString(`</a>`)
+		}
+
 	case "text":
+		open, closeTags := textFormatTags(node.Format)
+		buf.WriteString(open)
 		buf.WriteString(escapeText(node.Text))
+		buf.WriteString(closeTags)
 
 	default:
 		return fmt.Errorf("unknown node type %q: add it to the rendering contract", node.Type)
@@ -160,4 +217,76 @@ func hasOnlyTextChildren(children []lexicalNode) bool {
 		}
 	}
 	return true
+}
+
+func renderChildren(buf *bytes.Buffer, children []lexicalNode, depth int) error {
+	for _, child := range children {
+		if err := renderNode(buf, child, depth); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// headingTag returns h1 to h6 for a Lexical heading tag, and h2 for anything
+// else so a malformed tag cannot inject markup.
+func headingTag(tag string) string {
+	switch tag {
+	case "h1", "h2", "h3", "h4", "h5", "h6":
+		return tag
+	}
+	return "h2"
+}
+
+// safeURL returns the URL when its scheme is http, https or mailto, and an
+// empty string otherwise, so exported documents never carry script links.
+func safeURL(raw string) string {
+	u := strings.TrimSpace(raw)
+	l := strings.ToLower(u)
+	if strings.HasPrefix(l, "http://") || strings.HasPrefix(l, "https://") || strings.HasPrefix(l, "mailto:") {
+		return u
+	}
+	return ""
+}
+
+// Lexical text format bits.
+const (
+	fmtBold          = 1
+	fmtItalic        = 2
+	fmtStrikethrough = 4
+	fmtUnderline     = 8
+	fmtCode          = 16
+)
+
+// textFormatTags returns the opening and closing tags for a text node's
+// format bit mask. A missing or non-numeric format means plain text.
+func textFormatTags(raw json.RawMessage) (string, string) {
+	var f int
+	if len(raw) == 0 || json.Unmarshal(raw, &f) != nil || f == 0 {
+		return "", ""
+	}
+	var open, closing strings.Builder
+	add := func(bit int, tag string) {
+		if f&bit != 0 {
+			open.WriteString("<" + tag + ">")
+			s := "</" + tag + ">"
+			closing.WriteString(s)
+		}
+	}
+	add(fmtBold, "strong")
+	add(fmtItalic, "em")
+	add(fmtStrikethrough, "s")
+	add(fmtUnderline, "u")
+	add(fmtCode, "code")
+	return open.String(), reverseTags(closing.String())
+}
+
+// reverseTags reorders closing tags so they nest correctly.
+func reverseTags(s string) string {
+	parts := strings.SplitAfter(s, ">")
+	var out strings.Builder
+	for i := len(parts) - 1; i >= 0; i-- {
+		out.WriteString(parts[i])
+	}
+	return out.String()
 }
