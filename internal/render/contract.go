@@ -48,4 +48,22 @@ var Contract = map[string]NodeSpec{
 	"paragraph": {
 		HTMLElement: "p",
 	},
+	"heading": {
+		HTMLElement: "h1-h6 by tag",
+	},
+	"list": {
+		HTMLElement: "ul or ol by listType",
+	},
+	"listitem": {
+		HTMLElement: "li",
+	},
+	"quote": {
+		HTMLElement: "blockquote",
+	},
+	"linebreak": {
+		HTMLElement: "br",
+	},
+	"link": {
+		HTMLElement: "a (http, https and mailto only)",
+	},
 }

@@ -82,3 +82,55 @@ func TestRenderHTMLUnknownNodeTypeErrors(t *testing.T) {
 		t.Error("expected error for unknown node type")
 	}
 }
+
+func TestRenderHTMLEditorNodes(t *testing.T) {
+	input := []byte(`{
+		"root": { "type": "root", "children": [
+			{ "type": "heading", "tag": "h1", "format": "", "children": [{ "type": "text", "text": "Title", "format": 0 }] },
+			{ "type": "paragraph", "format": "", "children": [
+				{ "type": "text", "text": "bold", "format": 1 },
+				{ "type": "text", "text": "both", "format": 3 },
+				{ "type": "linebreak" },
+				{ "type": "link", "url": "https://example.org/a?b=1&c=2", "children": [{ "type": "text", "text": "site" }] },
+				{ "type": "link", "url": "javascript:alert(1)", "children": [{ "type": "text", "text": "bad" }] }
+			]},
+			{ "type": "list", "listType": "number", "tag": "ol", "children": [
+				{ "type": "listitem", "children": [{ "type": "text", "text": "one" }] }
+			]},
+			{ "type": "list", "listType": "bullet", "tag": "ul", "children": [
+				{ "type": "listitem", "children": [{ "type": "text", "text": "dot" }] }
+			]},
+			{ "type": "quote", "children": [{ "type": "text", "text": "said" }] }
+		]},
+		"sensitivity": false
+	}`)
+	got, err := render.New().RenderHTML(input)
+	if err != nil {
+		t.Fatalf("RenderHTML: %v", err)
+	}
+	for _, want := range []string{
+		`<h1>Title</h1>`,
+		`<strong>bold</strong>`,
+		`<strong><em>both</em></strong>`,
+		`<br>`,
+		`<a href="https://example.org/a?b=1&amp;c=2">site</a>`,
+		`bad`,
+		`<ol><li>one</li></ol>`,
+		`<ul><li>dot</li></ul>`,
+		`<blockquote>said</blockquote>`,
+	} {
+		if !strings.Contains(got, want) {
+			t.Errorf("want %q in output\nGot:\n%s", want, got)
+		}
+	}
+	if strings.Contains(got, "javascript:") {
+		t.Errorf("script link survived:\n%s", got)
+	}
+}
+
+func TestRenderHTMLUnknownNodeStillFails(t *testing.T) {
+	_, err := render.New().RenderHTML([]byte(`{"root":{"type":"root","children":[{"type":"mystery"}]}}`))
+	if err == nil {
+		t.Fatal("want an error for an unknown node type")
+	}
+}
